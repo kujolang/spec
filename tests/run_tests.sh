@@ -252,7 +252,7 @@ check_output "spec doctor prints diagnostic header" "Spec Doctor" "$SPEC" doctor
 
 # 19g. FEAT-17: changelog command works with explicit ref
 check "spec changelog with explicit ref works" bash -c "
-	ref=\$(git rev-parse --verify HEAD~1 2>/dev/null) &&
+	ref=\$(git rev-parse --verify HEAD~1 2>/dev/null || git rev-parse --verify HEAD) &&
 	'$SPEC' changelog \"\$ref\" | grep -q '## Changelog'
 "
 
