@@ -1,0 +1,3 @@
+# Invalid spec — missing required name
+goal: "This spec has no name."
+version: "0.1.0"

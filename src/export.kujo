@@ -1,0 +1,82 @@
+# Spec Exporter — exports spec to agent context prompt.
+# Called as: kujo run src/export.kujo --json <tmp-file> [--format agent|dispatch]
+
+from src.common import dict_get, dict_get_arr
+
+export func export_agent(spec) {
+	name := dict_get(spec, "name", "Untitled")
+	goal := dict_get(spec, "goal", "")
+	pri := dict_get(spec, "priority", "medium")
+	st := dict_get(spec, "status", "draft")
+	bg := dict_get(spec, "background", "")
+	sc := dict_get(spec, "scope", "")
+	eff := dict_get(spec, "estimated_effort", "")
+
+	context := "## Task: " + name + "\n\n"
+	context = context + "### Goal\n" + goal + "\n\n"
+	context = context + "**Status:** " + st + " | **Priority:** " + pri
+	if eff != "" { context = context + " | **Effort:** " + eff }
+	context = context + "\n\n"
+	if bg != "" { context = context + "### Background\n" + bg + "\n\n" }
+
+	ng := dict_get_arr(spec, "non_goals")
+	if sc != "" || len(ng) > 0 {
+		context = context + "### Scope & Boundaries\n\n"
+		if sc != "" { context = context + "**In scope:**\n" + sc + "\n\n" }
+		if len(ng) > 0 { context = context + "**Out of scope (do NOT do):**\n"; ni := 0; while ni < len(ng) { context = context + "- " + ng[ni] + "\n"; ni := ni + 1 }; context = context + "\n" }
+	}
+
+	ss := dict_get_arr(spec, "relevant_systems")
+	if len(ss) > 0 { context = context + "### Relevant Systems\n"; si := 0; while si < len(ss) { context = context + "- " + ss[si] + "\n"; si := si + 1 }; context = context + "\n" }
+
+	fls := dict_get_arr(spec, "likely_files")
+	if len(fls) > 0 { context = context + "### Likely Files\n"; fi := 0; while fi < len(fls) { context = context + "- `" + fls[fi] + "`\n"; fi := fi + 1 }; context = context + "\n" }
+
+	ac := dict_get_arr(spec, "acceptance_criteria")
+	if len(ac) > 0 { context = context + "### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n"; ai := 0; while ai < len(ac) { context = context + to_string(ai + 1) + ". " + ac[ai] + "\n"; ai := ai + 1 }; context = context + "\n" }
+
+	rk := dict_get_arr(spec, "risks")
+	if len(rk) > 0 {
+		context = context + "### Known Risks\n"
+		ri := 0
+		while ri < len(rk) { robj := rk[ri]; rd := dict_get(robj, "risk", ""); sv := dict_get(robj, "severity", ""); mt := dict_get(robj, "mitigation", ""); context = context + "- **[" + sv + "]** " + rd; if mt != "" { context = context + " -- *Mitigation: " + mt + "*" }; context = context + "\n"; ri := ri + 1 }
+		context = context + "\n"
+	}
+
+	dp := dict_get_arr(spec, "dependencies")
+	if len(dp) > 0 { context = context + "### Dependencies\n"; di := 0; while di < len(dp) { context = context + "- " + dp[di] + "\n"; di := di + 1 }; context = context + "\n" }
+
+	hp := dict_get_arr(spec, "human_approval_points")
+	if len(hp) > 0 { context = context + "### Human Approval Required At\n"; hi := 0; while hi < len(hp) { context = context + to_string(hi + 1) + ". " + hp[hi] + "\n"; hi := hi + 1 }; context = context + "\n" }
+
+	context = context + "### Priority\n**" + pri + "** priority"
+	if eff != "" { context = context + " | Estimated effort: " + eff }
+	context = context + "\n\n"
+	context = context + "---\n\n**Instructions:** Read context before starting. Understand goal and scope. Verify acceptance criteria. Stop at approval points.\n"
+	return context
+}
+
+export func export_dispatch(spec) {
+	name := dict_get(spec, "name", "")
+	goal := dict_get(spec, "goal", "")
+	pri := dict_get(spec, "priority", "medium")
+	ac := dict_get_arr(spec, "acceptance_criteria")
+	dp := dict_get_arr(spec, "dependencies")
+	result := "{\"name\": \"" + name + "\", \"goal\": \"" + goal + "\", \"priority\": \"" + pri + "\", \"ac_count\": " + to_string(len(ac)) + ", \"dep_count\": " + to_string(len(dp)) + "}"
+	return result
+}
+
+func main() {
+	parser := arg_parser()
+	parser := parser.add_argument("--json", "type", "string", "default", "", "help", "Path to parsed spec JSON")
+	parser := parser.add_argument("--format", "type", "string", "default", "agent", "help", "Export format")
+	parsed_args := parser.parse()
+	json_file := trim(to_string(parsed_args["json"]))
+	output_format := lower(trim(to_string(parsed_args["format"])))
+	if json_file == "" { print("Error: --json required"); return }
+	raw := read_file(json_file)
+	spec := parse_json(raw)
+	if output_format == "dispatch" { print(export_dispatch(spec)) }
+	else { print(export_agent(spec)) }
+}
+main()

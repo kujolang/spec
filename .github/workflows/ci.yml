@@ -1,0 +1,53 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bench_profile: ci-linux
+            bench_baseline: "60"
+          - os: macos-latest
+            bench_profile: ci-macos
+            bench_baseline: "90"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Kujo runtime
+        run: |
+          echo "KUJO_BIN=kujo" >> $GITHUB_ENV
+      - name: Set benchmark profile
+        run: |
+          echo "SPEC_BENCH_PROFILE=${{ matrix.bench_profile }}" >> $GITHUB_ENV
+          echo "SPEC_BENCH_BASELINE_SECONDS=${{ matrix.bench_baseline }}" >> $GITHUB_ENV
+      - name: Run tests
+        run: bash tests/run_tests.sh
+      - name: Release quality gates
+        env:
+          SPEC_BENCH_COUNT: "30"
+          SPEC_FUZZ_ITERATIONS: "100"
+        run: bash scripts/release_quality_gates.sh
+      - name: Supply chain check
+        run: bash scripts/supply_chain_policy_check.sh
+      - name: Doc command parity
+        run: bash scripts/verify_docs_command_parity.sh
+      - name: Command-surface smoke checks
+        run: |
+          ./scripts/spec help >/dev/null
+          ./scripts/spec version --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "version" in d and "contract" in d'
+          ./scripts/spec ci examples --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["failed"] == 0'
+      - name: Packaging checks
+        run: |
+          INSTALL_DIR="$PWD/.tmp_install_bin" INSTALL_SOURCE_DIR="$PWD" bash scripts/install.sh >/dev/null
+          if command -v ruby >/dev/null 2>&1; then
+            ruby -c homebrew/spec.rb
+          else
+            echo "ruby not available; skipping Homebrew formula syntax check"
+          fi

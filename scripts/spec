@@ -1,0 +1,1064 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+KUJO_BIN="${KUJO_BIN:-kujo}"
+VERSION="0.1.0"
+SPEC_SCHEMA_VERSION="1.0.0"
+HELPER="$SCRIPT_DIR/spec_helpers.py"
+SPEC_TIMEOUT="${SPEC_TIMEOUT:-30}"
+
+# Early check: warn if Kujo runtime not found on PATH
+if [[ "$KUJO_BIN" == "kujo" ]] && ! command -v kujo &>/dev/null; then
+	echo "Warning: Kujo runtime not found on PATH." >&2
+	echo "Set KUJO_BIN to the Kujo language runtime path:" >&2
+	echo "  export KUJO_BIN=/path/to/kujo/target/release/kujo" >&2
+	echo "" >&2
+fi
+
+die() { echo "Error: $*" >&2; exit 1; }
+
+# run_kujo — invoke the Kujo runtime with a timeout guard.
+# Usage: run_kujo <args...>
+# Respects SPEC_TIMEOUT env var (default: 30s).
+run_kujo() {
+	if command -v timeout &>/dev/null; then
+		timeout "$SPEC_TIMEOUT" "$KUJO_BIN" "$@" 2>/dev/null
+	else
+		# macOS doesn't have timeout; use perl as fallback
+		perl -e 'alarm shift; exec @ARGV' "$SPEC_TIMEOUT" "$KUJO_BIN" "$@" 2>/dev/null
+	fi
+}
+
+is_safe_path() {
+	# Reject paths that attempt directory traversal or access files outside
+	# the current working directory tree.
+	local p="$1"
+	local cwd_abs p_abs p_real
+
+	# Resolve current working directory to a canonical absolute path.
+	cwd_abs="$(pwd -P 2>/dev/null || pwd)"
+
+	# Reject paths containing .. traversal
+	case "$p" in
+		*..*)
+			echo "Error: Path traversal detected in: $p" >&2
+			echo "Spec files must be within the current project directory." >&2
+			return 1
+			;;
+	esac
+
+	# Normalize user input path to an absolute path.
+	p_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$p" 2>/dev/null)" || p_abs="$p"
+
+	# First, enforce lexical boundary (absolute path check).
+	if [[ "$p_abs" != "$cwd_abs"/* ]] && [[ "$p_abs" != "$cwd_abs" ]]; then
+		echo "Error: Access to path outside project denied: $p" >&2
+		echo "Spec files must be within the current project directory." >&2
+		return 1
+	fi
+
+	# Then enforce symlink boundary: resolved target must also stay in project.
+	if [[ -e "$p" ]]; then
+		p_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null)" || p_real="$p_abs"
+		if [[ "$p_real" != "$cwd_abs"/* ]] && [[ "$p_real" != "$cwd_abs" ]]; then
+			echo "Error: Symlink target outside project denied: $p" >&2
+			echo "Resolved target: $p_real" >&2
+			return 1
+		fi
+	fi
+
+	return 0
+}
+
+invalidate_spec_cache() {
+	local f="$1"
+	local cache_dir cache_key
+	cache_dir="${TMPDIR:-/tmp}/.spec_cache"
+	cache_key="$(echo -n "$f" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
+	if [[ -n "$cache_key" ]]; then
+		rm -f "$cache_dir/$cache_key.json" "$cache_dir/$cache_key.sig" 2>/dev/null || true
+	fi
+}
+
+spec_to_json() {
+	local f="$1" out="$2"
+	local fsize cur_mtime cur_sig cached_sig
+
+	# Security: reject files larger than 1MB before parsing
+	fsize="$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)"
+	if [[ "$fsize" -gt 1048576 ]]; then
+		die "File too large: $f ($fsize bytes). Maximum size is 1MB."
+	fi
+
+	# PERF-02: Check cache — if a cached JSON exists with matching signature, use it
+	local cache_dir="${TMPDIR:-/tmp}/.spec_cache"
+	mkdir -p "$cache_dir" 2>/dev/null || true
+	chmod 700 "$cache_dir" 2>/dev/null || true
+	local cache_key; cache_key="$(echo -n "$f" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
+	cur_mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+	cur_sig="$cur_mtime:$fsize"
+	if [[ -n "$cache_key" ]]; then
+		local cache_file="$cache_dir/$cache_key.json"
+		local cache_sig="$cache_dir/$cache_key.sig"
+		cached_sig="$(cat "$cache_sig" 2>/dev/null || echo "")"
+		if [[ -f "$cache_file" ]] && [[ "$cur_sig" == "$cached_sig" ]]; then
+			if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$cache_file" >/dev/null 2>&1; then
+				cp "$cache_file" "$out"
+				return
+			fi
+		fi
+	fi
+
+	case "$f" in
+	*.json) cp "$f" "$out" ;;
+	*.yml|*.yaml)
+		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$f" --from yaml --to json > "$out" 2>/dev/null || die "YAML parsing failed for $f"
+		;;
+	*.toml)
+		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$f" --from toml --to json > "$out" 2>/dev/null || die "TOML parsing failed for $f"
+		;;
+	*) die "Unknown format: $f (use .json, .yml, .yaml, or .toml)" ;;
+	esac
+
+	# Update cache
+	if [[ -n "$cache_key" ]]; then
+		cp "$out" "$cache_file" 2>/dev/null || true
+		echo "$cur_sig" > "$cache_sig" 2>/dev/null || true
+	fi
+}
+
+# validate_file_quiet — fast validation path for batched commands.
+# Usage: validate_file_quiet <file> [strict=true|false]
+# Returns 0 when valid, 1 otherwise. Produces no user-facing output.
+validate_file_quiet() {
+	local f="$1" strict="${2:-false}"
+	[[ -f "$f" ]] || return 1
+	is_safe_path "$f" || return 1
+
+	local tmp result valid warns
+	tmp="$(mktemp -t spec_validate_quiet_XXXXXX.json)"
+	spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+	result="$("$KUJO_BIN" run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
+	result="$(augment_unknown_top_level_warnings "$tmp" "$result")"
+	valid="$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('valid',False))" 2>/dev/null)" || valid="False"
+
+	if [[ "$strict" == "true" ]]; then
+		warns="$(echo "$result" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('warnings',[])))" 2>/dev/null)" || warns=0
+		if [[ "$warns" -gt 0 ]]; then
+			valid="False"
+		fi
+	fi
+
+	rm -f "$tmp" 2>/dev/null
+	[[ "$valid" == "True" ]]
+}
+
+augment_unknown_top_level_warnings() {
+	local spec_file="$1"
+	local validate_json="$2"
+
+	python3 -c '
+import json
+import sys
+
+allowed = {
+	"name", "goal", "id", "status", "version", "created_at",
+	"background", "scope", "non_goals", "relevant_systems", "likely_files",
+	"acceptance_criteria", "eval_requirements", "risks", "dependencies",
+	"review_expectations", "human_approval_points", "estimated_effort",
+	"priority", "assignee", "tags", "parent_id"
+}
+
+try:
+	v = json.loads(sys.argv[2])
+except Exception:
+	v = {"valid": False, "errors": ["Validation output parse error"], "warnings": []}
+
+if "warnings" not in v or not isinstance(v["warnings"], list):
+	v["warnings"] = []
+
+try:
+	spec = json.load(open(sys.argv[1]))
+	if isinstance(spec, dict):
+		for k in spec.keys():
+			if k not in allowed:
+				msg = f"Unknown top-level field: {k}"
+				if msg not in v["warnings"]:
+					v["warnings"].append(msg)
+except Exception:
+	pass
+
+print(json.dumps(v))
+' "$spec_file" "$validate_json" 2>/dev/null || echo "$validate_json"
+}
+
+# ---------------------------------------------------------------------------
+# Shared option parsing — extracts --output and --format from remaining args.
+# Usage: parse_opts "$@"  -- sets OUTPUT_VAR, FORMAT_VAR (caller must declare local)
+parse_opts() {
+	OUTPUT_VAR=""
+	FORMAT_VAR="agent"
+	UNSAFE_WRITE_VAR=false
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			--output) OUTPUT_VAR="$2"; shift 2 ;;
+			--format) FORMAT_VAR="$2"; shift 2 ;;
+			--unsafe-write) UNSAFE_WRITE_VAR=true; shift ;;
+			*) shift ;;
+		esac
+	done
+}
+
+is_safe_write_mode_enabled() {
+	local mode="${SPEC_SAFE_WRITE:-auto}"
+	case "$mode" in
+		1|true|on|yes) return 0 ;;
+		0|false|off|no) return 1 ;;
+		auto|"")
+			if [[ "${SPEC_ACTIVE_COMMAND:-}" == "ci" ]]; then
+				return 0
+			fi
+			return 1
+			;;
+		*) return 1 ;;
+	esac
+}
+
+is_home_template_allowed() {
+	local strict_template_source="${1:-false}"
+	if [[ "$strict_template_source" == "true" ]]; then
+		return 1
+	fi
+
+	case "${SPEC_TEMPLATE_SOURCE_POLICY:-allow-home}" in
+		allow-home|home|any) return 0 ;;
+		project-only|strict) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+enforce_safe_write_path() {
+	local target="$1"
+	local unsafe_write="${2:-false}"
+	local cwd_abs target_abs target_real parent_abs parent_real
+
+	[[ -z "$target" ]] && return 0
+	[[ "$unsafe_write" == "true" ]] && return 0
+	is_safe_write_mode_enabled || return 0
+
+	case "$target" in
+		/dev/stdout|/dev/stderr|-) return 0 ;;
+	esac
+
+	cwd_abs="$(pwd -P 2>/dev/null || pwd)"
+	target_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$target" 2>/dev/null)" || target_abs="$target"
+
+	if [[ "$target_abs" != "$cwd_abs"/* ]] && [[ "$target_abs" != "$cwd_abs" ]]; then
+		die "Unsafe write path denied: $target. Set --unsafe-write to override."
+	fi
+
+	if [[ -e "$target" ]]; then
+		target_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$target" 2>/dev/null)" || target_real="$target_abs"
+		if [[ "$target_real" != "$cwd_abs"/* ]] && [[ "$target_real" != "$cwd_abs" ]]; then
+			die "Unsafe write path denied (resolved target outside project): $target. Set --unsafe-write to override."
+		fi
+	fi
+
+	parent_abs="$(python3 -c 'import os,sys; print(os.path.dirname(os.path.abspath(sys.argv[1])))' "$target" 2>/dev/null)" || parent_abs=""
+	if [[ -n "$parent_abs" ]] && [[ -d "$parent_abs" ]]; then
+		parent_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$parent_abs" 2>/dev/null)" || parent_real="$parent_abs"
+		if [[ "$parent_real" != "$cwd_abs"/* ]] && [[ "$parent_real" != "$cwd_abs" ]]; then
+			die "Unsafe write directory denied: $target. Set --unsafe-write to override."
+		fi
+	fi
+}
+
+COMMANDS_DIR="$SCRIPT_DIR/commands"
+if [[ -f "$COMMANDS_DIR/maintenance.sh" ]]; then
+	source "$COMMANDS_DIR/maintenance.sh"
+else
+	die "Missing command module: $COMMANDS_DIR/maintenance.sh"
+fi
+
+cmd_version() {
+	local json_out=false
+	while [[ $# -gt 0 ]]; do case "$1" in --json) json_out=true; shift ;; *) shift ;; esac; done
+	if $json_out; then
+		echo "{\"version\": \"$VERSION\", \"contract\": \"0.1.0\", \"schema_version\": \"$SPEC_SCHEMA_VERSION\"}"
+	else
+		echo "Spec v$VERSION"
+		echo "Contract version: 0.1.0"
+		echo "Schema: spec.schema.json v$SPEC_SCHEMA_VERSION"
+		echo "Supported formats: YAML (.yml, .yaml), TOML (.toml), JSON (.json)"
+	fi
+}
+
+cmd_help() {
+	cat <<'HELPEOF'
+Spec — structured task definition format for AI-native development
+
+Usage:
+	spec init [--format yaml|toml|json] [--output <path>] [--name <name>] [--from <source>] [--strict-template-source] [--unsafe-write]
+  spec create                          (alias for init)
+  spec init-interactive                Create a spec via interactive prompts
+  spec validate <spec-file> [--quiet] [--strict] [--json]
+	spec render <spec-file> [--output <path>] [--unsafe-write]
+	spec export <spec-file> [--format agent|dispatch|markdown|eval|envelope] [--payload-format agent|dispatch] [--output <path>] [--unsafe-write]
+	spec export-agent-context <spec-file> [--output <path>] [--format agent|dispatch] [--unsafe-write]
+  spec info <spec-file> [--json]
+  spec list [--dir <path>] [--json] [--max-depth <n>]
+  spec validate-all [<directory>]
+  spec search [--tag <tag>] [--priority <p>] [--query <q>]
+  spec status <spec-file> [--set <status>]
+	spec convert <file> --to yaml|json|toml [--output <path>] [--unsafe-write]
+  spec template <list|create|delete> [args...]
+  spec watch <file> [validate|render]
+  spec diff <file-a> <file-b>
+	spec export-eval <file> [--output <path>] [--unsafe-write]
+	  spec ci [<directory>] [--strict] [--format text|json|github] [--max-files <n>] [--fail-fast] [--jobs <n>]
+	spec doctor
+	spec changelog [<since-ref>]
+	spec graph [<directory>] [--format mermaid|dot]
+  spec version [--json]
+  spec help
+
+Commands:
+  init                  Create a new spec file from template
+  init-interactive      Create a spec via interactive prompts
+  validate              Validate a spec file against the Spec schema
+  render                Render a spec file to Markdown
+	export                Export a spec in multiple formats (agent, dispatch, markdown, eval, envelope)
+  export-agent-context  Export a spec as an AI agent context prompt
+  info                  Show a summary of a spec file
+  list                  List all spec files in a directory tree
+  validate-all          Validate all specs in a directory
+  search                Search specs by tag, priority, or keyword
+  status                View or update spec lifecycle status
+  convert               Convert spec between YAML/JSON/TOML formats
+  template              Manage spec templates (list, create, delete)
+  watch                 Watch a spec file and re-validate on changes
+  diff                  Show differences between two spec files
+  export-eval           Export eval requirements as kujo-eval suite
+  ci                    CI-friendly validation of all specs (supports --format github)
+	doctor                Diagnose runtime/environment setup issues
+	changelog             Generate a changelog from git history
+	graph                 Render spec relationship graph (mermaid or dot)
+  version               Print Spec version
+  help                  Show this help
+
+Options:
+  --format <yaml|toml|json>  Spec file format (default: yaml)
+  --output <path>            Output file path
+  --name <name>              Spec name (for init)
+	--from <source>            Import source for init
+	--payload-format <agent|dispatch>  Payload format used by export envelope
+	--jobs <n>                 Parallel workers for spec ci (default: 1)
+	--strict-template-source   Restrict init template lookup to project templates only
+	--unsafe-write             Allow writes outside project root when safe-write mode is active
+
+Environment:
+	SPEC_SAFE_WRITE=auto|on|off   Output path policy (default: auto; auto enables for spec ci)
+	SPEC_TEMPLATE_SOURCE_POLICY=allow-home|project-only   Home template source policy (default: allow-home)
+
+File formats: .yml, .yaml, .toml, .json
+Exit codes:  0 = success, 1 = failure
+HELPEOF
+}
+
+cmd_init() {
+	local fmt="yaml" out="" name="" from="" unsafe_write=false strict_template_source=false
+	while [[ $# -gt 0 ]]; do case "$1" in
+		--format) fmt="$2"; shift 2 ;; --output) out="$2"; shift 2 ;;
+		--name) name="$2"; shift 2 ;; --from) from="$2"; shift 2 ;;
+		--strict-template-source) strict_template_source=true; shift ;;
+		--unsafe-write) unsafe_write=true; shift ;;
+		*) shift ;;
+	esac; done
+
+	# --from mode: import spec from external source
+	if [[ -n "$from" ]]; then
+		out="${out:-spec.$fmt}"
+		[[ "$fmt" =~ ^(yaml|yml|toml|json)$ ]] || die "Format must be yaml, toml, or json"
+		[[ -f "$out" ]] && die "File exists: $out. Use --output for different path."
+		enforce_safe_write_path "$out" "$unsafe_write"
+		_init_from "$from" "$out" "$fmt" "$name" "$strict_template_source"
+		echo "Created (from $from): $out"
+		return
+	fi
+
+	out="${out:-spec.$fmt}"
+	[[ "$fmt" =~ ^(yaml|yml|toml|json)$ ]] || die "Format must be yaml, toml, or json"
+	[[ -f "$out" ]] && die "File exists: $out. Use --output for different path."
+	enforce_safe_write_path "$out" "$unsafe_write"
+
+	# Sanitize name: only allow alphanumeric, spaces, underscores, and hyphens
+	if [[ -n "$name" ]] && [[ ! "$name" =~ ^[a-zA-Z0-9\ _-]+$ ]]; then
+		die "Invalid name: '$name'. Names may only contain letters, numbers, spaces, underscores, and hyphens."
+	fi
+
+	# Generate metadata once (DRY)
+	local uuid; uuid="$(python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
+	local now; now="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || now=""
+
+	if [[ "$fmt" == "json" ]]; then
+		cat > "$out" <<JSONEOF
+{
+  "name": "$name",
+  "goal": "",
+  "id": "$uuid",
+  "status": "draft",
+  "version": "0.1.0",
+  "created_at": "$now",
+  "priority": "medium",
+  "tags": []
+}
+JSONEOF
+	elif [[ "$fmt" == "toml" ]]; then
+		cat > "$out" <<TOMLEOF
+name = "$name"
+goal = ""
+id = "$uuid"
+status = "draft"
+version = "0.1.0"
+created_at = "$now"
+priority = "medium"
+tags = []
+TOMLEOF
+	else
+		cat > "$out" <<YMLEOF
+name: "$name"
+goal: ""
+id: "$uuid"
+status: "draft"
+version: "0.1.0"
+created_at: "$now"
+priority: "medium"
+tags: []
+YMLEOF
+	fi
+	echo "Created: $out"
+}
+
+# _init_from — import spec from an external source.
+# Supported sources:
+#   -                    read JSON from stdin
+#   json:<file>          import from JSON file
+#   template:<name>      use a template from specs/templates/<name>.template.yml
+#   github:<o/r/num>     fetch GitHub issue (requires gh CLI)
+_init_from() {
+	local src="$1" out="$2" fmt="$3" name="${4:-}" strict_template_source="${5:-false}"
+	case "$src" in
+		-)
+			# Read spec JSON from stdin
+			if [[ "$fmt" == "json" ]]; then
+				python3 -c "
+import json, sys
+spec = json.load(sys.stdin)
+if '$name': spec['name'] = '$name'
+json.dump(spec, open('$out','w'), indent=2)
+" || die "Failed to parse stdin as JSON or write output"
+			elif [[ "$fmt" == "toml" ]]; then
+				python3 -c "
+import json, sys
+spec = json.load(sys.stdin)
+if '$name': spec['name'] = '$name'
+lines = [k+' = '+json.dumps(v) for k,v in spec.items()]
+open('$out','w').write('\n'.join(lines)+'\n')
+" || die "Failed to parse stdin as JSON or write output"
+			else
+				python3 -c "
+import json, sys, yaml
+spec = json.load(sys.stdin)
+if '$name': spec['name'] = '$name'
+open('$out','w').write(yaml.dump(spec, default_flow_style=False))
+" || die "Failed to parse stdin as JSON or write output"
+			fi
+			;;
+		json:*)
+			local jf="${src#json:}"
+			[[ -f "$jf" ]] || die "JSON file not found: $jf"
+			# Convert JSON input to target format
+			if [[ "$fmt" == "json" ]]; then cp "$jf" "$out"
+			elif [[ "$fmt" == "toml" ]]; then
+				python3 -c "
+import json
+d=json.load(open('$jf'))
+lines=[k+' = '+json.dumps(v) for k,v in d.items()]
+open('$out','w').write('\n'.join(lines)+'\n')
+" 2>/dev/null || die "JSON import failed"
+			else
+				python3 -c "
+import json, yaml
+d=json.load(open('$jf'))
+open('$out','w').write(yaml.dump(d, default_flow_style=False))
+" 2>/dev/null || die "JSON import failed"
+			fi
+			;;
+		template:*)
+			local tname="${src#template:}"
+			local tfile="specs/templates/${tname}.template.yml"
+			[[ -f "$tfile" ]] || tfile="specs/templates/${tname}.template.json"
+			[[ -f "$tfile" ]] || tfile=".specs/templates/${tname}.template.yml"
+			[[ -f "$tfile" ]] || tfile=".specs/templates/${tname}.template.json"
+			if [[ ! -f "$tfile" ]] && is_home_template_allowed "$strict_template_source"; then
+				local home_template_dir="$HOME/.config/kujo-spec/templates"
+				tfile="$home_template_dir/${tname}.template.yml"
+				[[ -f "$tfile" ]] || tfile="$home_template_dir/${tname}.template.json"
+			fi
+			if [[ ! -f "$tfile" ]]; then
+				if [[ "$strict_template_source" == "true" ]]; then
+					die "Template not found in project templates: $tname (strict template source mode blocks home templates)"
+				fi
+				die "Template not found: $tname (looked for specs/templates/${tname}.template.yml and home templates)"
+			fi
+			# Copy template and replace name if provided
+			if [[ -n "$name" ]]; then
+				"$0" convert "$tfile" --to json --output /dev/stdout 2>/dev/null | \
+					python3 -c "import json,sys; d=json.load(sys.stdin); d['name']='$name'; json.dump(d,open('$out','w'),indent=2)" 2>/dev/null || \
+					cp "$tfile" "$out"
+			else
+				cp "$tfile" "$out"
+			fi
+			;;
+		github:*)
+			local gspec="${src#github:}"
+			command -v gh &>/dev/null || die "GitHub CLI (gh) required for --from github:. Install: brew install gh"
+			local gjson; gjson="$(gh issue view "$gspec" --json title,body 2>/dev/null)" || die "Failed to fetch GitHub issue: $gspec"
+			# Convert GitHub issue to spec
+			if [[ "$fmt" == "json" ]]; then
+				echo "$gjson" | python3 -c "
+import json, sys
+issue = json.load(sys.stdin)
+spec = {
+	'name': '$name' if '$name' else issue.get('title','GitHub Issue'),
+	'goal': (issue.get('body','') or '')[:500],
+	'version': '0.1.0',
+	'priority': 'medium',
+	'tags': ['github']
+}
+json.dump(spec, open('$out','w'), indent=2)
+" 2>/dev/null || die "GitHub issue conversion failed"
+			elif [[ "$fmt" == "toml" ]]; then
+				echo "$gjson" | python3 -c "
+import json, sys
+issue = json.load(sys.stdin)
+spec = {
+	'name': '$name' if '$name' else issue.get('title','GitHub Issue'),
+	'goal': (issue.get('body','') or '')[:500],
+	'version': '0.1.0',
+	'priority': 'medium',
+	'tags': ['github']
+}
+lines=[k+' = '+json.dumps(v) for k,v in spec.items()]
+open('$out','w').write('\n'.join(lines)+'\n')
+" 2>/dev/null || die "GitHub issue conversion failed"
+			else
+				echo "$gjson" | python3 -c "
+import json, sys, yaml
+issue = json.load(sys.stdin)
+spec = {
+	'name': '$name' if '$name' else issue.get('title','GitHub Issue'),
+	'goal': (issue.get('body','') or '')[:500],
+	'version': '0.1.0',
+	'priority': 'medium',
+	'tags': ['github']
+}
+open('$out','w').write(yaml.dump(spec, default_flow_style=False))
+" 2>/dev/null || die "GitHub issue conversion failed"
+			fi
+			;;
+		*) die "Unknown --from source: $src (use -, json:<file>, template:<name>, or github:<o/r/num>)" ;;
+	esac
+}
+
+cmd_validate() {
+        local f="${1:-}" quiet=false strict=false json_out=false
+        while [[ $# -gt 0 ]]; do case "$1" in --quiet) quiet=true; shift ;; --strict) strict=true; shift ;; --json) json_out=true; shift ;; *) shift ;; esac; done
+        [[ -z "$f" ]] && die "Usage: spec validate <file> [--quiet] [--strict] [--json]"
+        [[ -f "$f" ]] || die "File not found: $f"
+        is_safe_path "$f" || exit 1
+        $quiet || $json_out || echo "Validating: $f"
+        local tmp; tmp="$(mktemp -t spec_validate_XXXXXX.json)"
+        trap "rm -f $tmp" RETURN
+        spec_to_json "$f" "$tmp"
+        local result; result="$(run_kujo run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
+		result="$(augment_unknown_top_level_warnings "$tmp" "$result")"
+        local valid; valid="$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('valid',False))" 2>/dev/null)" || true
+        # In strict mode, treat warnings as errors
+        if $strict; then
+                local warns; warns="$(echo "$result" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('warnings',[])))" 2>/dev/null)" || warns=0
+                if [[ "$warns" -gt 0 ]]; then valid="False"; fi
+        fi
+        if $json_out; then
+                echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); d['valid'] = '$valid' == 'True'; print(json.dumps(d))" 2>/dev/null || echo "$result"
+                [[ "$valid" == "True" ]] || exit 1
+        elif [[ "$valid" == "True" ]]; then
+                $quiet || echo "PASS: Spec is valid"
+        else
+                echo "FAIL: Validation failed"
+                echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  - '+e) for e in d.get('errors',[])]" 2>/dev/null || true
+                $strict && echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  WARNING: '+w) for w in d.get('warnings',[])]" 2>/dev/null || true
+                exit 1
+        fi
+}
+
+cmd_render() {
+	local f="${1:-}" out unsafe_write
+	parse_opts "${@:2}"
+	out="$OUTPUT_VAR"
+	unsafe_write="$UNSAFE_WRITE_VAR"
+	[[ -z "$f" ]] && die "Usage: spec render <file> [--output <path>]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+	[[ -n "$out" ]] && enforce_safe_write_path "$out" "$unsafe_write"
+	local tmp; tmp="$(mktemp -t spec_render_XXXXXX.json)"
+	trap "rm -f $tmp" RETURN
+	spec_to_json "$f" "$tmp"
+    local md; md="$(run_kujo run "$PROJECT_DIR/src/render.kujo" --json "$tmp" 2>/dev/null)" || true
+	if [[ -n "$out" ]]; then echo "$md" > "$out"; echo "Rendered: $out"
+	else echo "$md"; fi
+}
+
+cmd_export() {
+	local f="${1:-}" out fmt unsafe_write
+	parse_opts "${@:2}"
+	out="$OUTPUT_VAR"
+	fmt="${FORMAT_VAR:-agent}"
+	unsafe_write="$UNSAFE_WRITE_VAR"
+	[[ -z "$f" ]] && die "Usage: spec export-agent-context <file> [--output <path>] [--format agent|dispatch]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+	[[ -n "$out" ]] && enforce_safe_write_path "$out" "$unsafe_write"
+	local tmp; tmp="$(mktemp -t spec_export_XXXXXX.json)"
+	trap "rm -f $tmp" RETURN
+	spec_to_json "$f" "$tmp"
+    local ctx; ctx="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$fmt" 2>/dev/null)" || true
+	if [[ -n "$out" ]]; then echo "$ctx" > "$out"; echo "Exported: $out"
+	else echo "$ctx"; fi
+}
+
+cmd_list() {
+	local dir="${1:-.}" json_out=false max_depth=3
+	while [[ $# -gt 0 ]]; do case "$1" in
+		--dir) dir="$2"; shift 2 ;; --json) json_out=true; shift ;;
+		--max-depth) max_depth="$2"; shift 2 ;; *) shift ;;
+	esac; done
+
+	[[ -d "$dir" ]] || die "Directory not found: $dir"
+
+	local files
+	files="$(find "$dir" -maxdepth "$max_depth" -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
+
+	if [[ -z "$files" ]]; then
+		$json_out && echo "[]" || echo "No spec files found in $dir"
+		return
+	fi
+
+	# Batch convert all specs to JSON, then extract fields in one Python call
+	local orig_files=()
+	local json_files=()
+	local tmpdir; tmpdir="$(mktemp -d)"
+	trap "rm -rf $tmpdir" RETURN
+	local idx=0
+	while IFS= read -r f; do
+		[[ -z "$f" ]] && continue
+		orig_files+=("$f")
+		local jf="$tmpdir/$(printf '%04d' $idx).json"
+		spec_to_json "$f" "$jf" 2>/dev/null || { touch "$jf"; }
+		json_files+=("$jf")
+		idx=$((idx + 1))
+	done <<< "$files"
+
+	if $json_out; then
+		local pair_args=()
+		idx=0
+		while [[ "$idx" -lt "${#orig_files[@]}" ]]; do
+			pair_args+=("${orig_files[$idx]}")
+			pair_args+=("${json_files[$idx]}")
+			idx=$((idx + 1))
+		done
+
+		python3 -c '
+import json
+import sys
+
+args = sys.argv[1:]
+out = []
+i = 0
+while i + 1 < len(args):
+	orig = args[i]
+	jf = args[i + 1]
+	i += 2
+	try:
+		with open(jf) as fh:
+			d = json.load(fh)
+		name = d.get("name", "?")
+		priority = d.get("priority", "?")
+		status = d.get("status", "draft")
+	except Exception:
+		name = "?"
+		priority = "?"
+		status = "?"
+	out.append({"file": orig, "name": name, "priority": priority, "status": status})
+
+print(json.dumps(out, indent=2))
+' "${pair_args[@]}" 2>/dev/null || echo "[]"
+	else
+		local output; output="$(python3 "$HELPER" list "${json_files[@]}" 2>/dev/null)" || true
+		printf "%-50s %-12s %-12s %s\n" "FILE" "PRIORITY" "STATUS" "NAME"
+		printf "%-50s %-12s %-12s %s\n" "----" "--------" "------" "----"
+		local line_idx=0
+		while IFS= read -r line; do
+			[[ -z "$line" ]] && continue
+			IFS='|' read -r _ pri name status <<< "$line"
+			local orig="${orig_files[$line_idx]:-?}"
+			printf "%-50s %-12s %-12s %s\n" "$orig" "$pri" "$status" "$name"
+			line_idx=$((line_idx + 1))
+		done <<< "$output"
+	fi
+}
+
+cmd_validate_all() {
+	local dir="${1:-.}"
+	[[ -d "$dir" ]] || die "Directory not found: $dir"
+	local files; files="$(find "$dir" -maxdepth 5 -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
+	[[ -z "$files" ]] && die "No spec files found in $dir"
+	local passed=0 failed=0
+	while IFS= read -r f; do
+		[[ -z "$f" ]] && continue
+		if validate_file_quiet "$f" false; then passed=$((passed+1)); else failed=$((failed+1)); fi
+	done <<< "$files"
+	echo "validate --all: $passed passed, $failed failed, $((passed+failed)) total"
+	return $failed
+}
+
+# ---------------------------------------------------------------------------
+cmd_search() {
+	local tag="" pri="" query=""
+	while [[ $# -gt 0 ]]; do case "$1" in
+		--tag) tag="$2"; shift 2 ;; --priority) pri="$2"; shift 2 ;;
+		--query) query="$2"; shift 2 ;; *) shift ;;
+	esac; done
+
+	local files
+	files="$(find . -maxdepth 5 -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
+	local found=0
+
+	while IFS= read -r f; do
+		[[ -z "$f" ]] && continue
+		local tmp; tmp="$(mktemp -t spec_search_XXXXXX.json)"
+		spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; continue; }
+		local name pri2 tags
+		name="$(python3 "$HELPER" get "$tmp" name "" 2>/dev/null)" || name=""
+		pri2="$(python3 "$HELPER" get "$tmp" priority "" 2>/dev/null)" || pri2=""
+		tags="$(python3 "$HELPER" get "$tmp" tags "" 2>/dev/null)" || tags=""
+		rm -f "$tmp" 2>/dev/null
+
+		local match=true
+		[[ -n "$tag" ]] && [[ ! " $tags " =~ " $tag " ]] && match=false
+		[[ -n "$pri" ]] && [[ "$pri2" != "$pri" ]] && match=false
+		[[ -n "$query" ]] && { echo "$name $tags" | grep -qi "$query" || match=false; }
+
+		if $match; then
+			printf "%-50s %-12s %s\n" "$f" "$pri2" "$name"
+			found=$((found+1))
+		fi
+	done <<< "$files"
+
+	echo "Found: $found spec(s)"
+}
+
+cmd_status() {
+	local f="${1:-}" new_status=""
+	shift 2>/dev/null || true
+	while [[ $# -gt 0 ]]; do case "$1" in --set) new_status="$2"; shift 2 ;; *) shift ;; esac; done
+	[[ -z "$f" ]] && die "Usage: spec status <file> [--set draft|ready|in-progress|review|completed|archived]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+
+	local tmp; tmp="$(mktemp -t spec_status_XXXXXX.json)"
+	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
+	local cur; cur="$(python3 "$HELPER" get "$tmp" status draft 2>/dev/null)" || cur="draft"
+
+	if [[ -n "$new_status" ]]; then
+		[[ "$new_status" =~ ^(draft|ready|in-progress|review|completed|archived)$ ]] || die "Invalid status: $new_status"
+		# Backup the original file
+		local bak; bak="${f}.bak.$(date +%s)"
+		cp "$f" "$bak"
+
+		# Update the file with a format-aware mutation that inserts status
+		# when missing, instead of relying on line replacement.
+		if [[ "$f" == *.json ]]; then
+			python3 "$HELPER" dump "$tmp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+d['status'] = sys.argv[1]
+json.dump(d, open(sys.argv[2], 'w'), indent=2)
+" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update JSON status"; }
+		elif [[ "$f" == *.yml || "$f" == *.yaml ]]; then
+			python3 "$HELPER" dump "$tmp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+d['status'] = sys.argv[1]
+out = sys.argv[2]
+try:
+	import yaml
+	text = yaml.dump(d, default_flow_style=False, sort_keys=False)
+except Exception:
+	lines = []
+	for k, v in d.items():
+		lines.append(f'{k}: {json.dumps(v)}')
+	text = '\n'.join(lines) + '\n'
+open(out, 'w').write(text)
+" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update YAML status"; }
+		elif [[ "$f" == *.toml ]]; then
+			python3 "$HELPER" dump "$tmp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+d['status'] = sys.argv[1]
+out = sys.argv[2]
+lines = []
+for k, v in d.items():
+	lines.append(f'{k} = {json.dumps(v)}')
+open(out, 'w').write('\n'.join(lines) + '\n')
+" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update TOML status"; }
+		else
+			mv "$bak" "$f"
+			rm -f "$tmp" 2>/dev/null
+			die "Unsupported format for status update: $f"
+		fi
+
+		# Invalidate conversion cache before read-after-write checks so
+		# validation and verification observe the updated file contents.
+			invalidate_spec_cache "$f"
+
+		# SEC-07: Validate after write — if validation fails, restore backup
+		if ! "$0" validate "$f" --quiet 2>/dev/null; then
+			mv "$bak" "$f"
+			rm -f "$tmp" 2>/dev/null
+			die "Status update produced an invalid spec. Original file restored."
+		fi
+
+		# Verify persisted value is exactly what was requested.
+		local verify_tmp persisted
+		verify_tmp="$(mktemp -t spec_status_verify_XXXXXX.json)"
+		spec_to_json "$f" "$verify_tmp" 2>/dev/null || {
+			mv "$bak" "$f"
+			rm -f "$tmp" "$verify_tmp" 2>/dev/null
+			die "Failed to verify updated status. Original file restored."
+		}
+		persisted="$(python3 "$HELPER" get "$verify_tmp" status "" 2>/dev/null)" || persisted=""
+		rm -f "$verify_tmp" 2>/dev/null
+		if [[ "$persisted" != "$new_status" ]]; then
+			mv "$bak" "$f"
+			rm -f "$tmp" 2>/dev/null
+			die "Status update did not persist requested value. Original file restored."
+		fi
+
+		rm -f "$bak" 2>/dev/null
+		echo "Status updated: $cur → $new_status"
+	else
+		echo "Status: $cur"
+	fi
+	rm -f "$tmp" 2>/dev/null
+}
+
+cmd_convert() {
+	local f="${1:-}" to="json" out="" unsafe_write=false
+	while [[ $# -gt 0 ]]; do case "$1" in
+		--to) to="$2"; shift 2 ;; --output) out="$2"; shift 2 ;;
+		--unsafe-write) unsafe_write=true; shift ;;
+		*) shift ;;
+	esac; done
+	[[ -z "$f" ]] && die "Usage: spec convert <file> --to yaml|json|toml [--output <path>]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+
+	local tmp; tmp="$(mktemp -t spec_convert_XXXXXX.json)"
+	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
+	out="${out:-spec.$to}"
+	enforce_safe_write_path "$out" "$unsafe_write"
+
+	if [[ "$to" == "json" ]]; then cp "$tmp" "$out"
+	elif [[ "$to" == "yaml" || "$to" == "yml" ]]; then
+		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp" --from json --to yaml > "$out" 2>/dev/null || die "YAML conversion failed"
+	else
+		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp" --from json --to toml > "$out" 2>/dev/null || die "TOML conversion failed"
+	fi
+	echo "Converted: $f → $out ($to)"
+	rm -f "$tmp" 2>/dev/null
+}
+
+cmd_info() {
+	local f="${1:-}" json_out=false
+	while [[ $# -gt 0 ]]; do case "$1" in --json) json_out=true; shift ;; *) shift ;; esac; done
+	[[ -z "$f" ]] && die "Usage: spec info <file> [--json]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+	local tmp; tmp="$(mktemp -t spec_info_XXXXXX.json)"
+	trap "rm -f $tmp" RETURN
+	spec_to_json "$f" "$tmp"
+
+	if $json_out; then
+		python3 "$HELPER" dump "$tmp" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+info = {
+	'name': d.get('name',''),
+	'goal': d.get('goal',''),
+	'status': d.get('status','draft'),
+	'priority': d.get('priority','medium'),
+	'version': d.get('version','0.1.0'),
+	'id': d.get('id',''),
+	'tags': d.get('tags',[]),
+	'acceptance_criteria': len(d.get('acceptance_criteria',[])),
+	'dependencies': len(d.get('dependencies',[])),
+	'eval_requirements': len(d.get('eval_requirements',[])),
+	'risks': len(d.get('risks',[])),
+	'file': sys.argv[1]
+}
+print(json.dumps(info, indent=2))
+" "$f"
+	else
+		# Single call extracts all fields via the helper
+		local fields; fields="$(python3 "$HELPER" fields "$tmp" name goal status priority version id)" || fields="?"
+		IFS='|' read -r name goal status pri ver id <<< "$fields"
+		local ac dep ev rk tags
+		ac="$(python3 "$HELPER" count "$tmp" acceptance_criteria)" || ac=0
+		dep="$(python3 "$HELPER" count "$tmp" dependencies)" || dep=0
+		ev="$(python3 "$HELPER" count "$tmp" eval_requirements)" || ev=0
+		rk="$(python3 "$HELPER" count "$tmp" risks)" || rk=0
+		tags="$(python3 "$HELPER" get "$tmp" tags)" || tags=""
+
+		echo "File:       $f"
+		echo "Name:       $name"
+		echo "Goal:       $goal"
+		[[ -n "$id" ]] && echo "ID:         $id"
+		echo "Status:     $status"
+		echo "Priority:   $pri"
+		echo "Version:    $ver"
+		[[ -n "$tags" && "$tags" != "[]" ]] && echo "Tags:       $tags"
+		echo "AC items:   $ac"
+		echo "Deps:       $dep"
+		echo "Eval reqs:  $ev"
+		echo "Risks:      $rk"
+	fi
+}
+
+cmd_watch() {
+	local f="${1:-}" cmd="${2:-validate}"
+	[[ -z "$f" ]] && die "Usage: spec watch <file> [validate|render]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+
+	echo "Watching $f (press Ctrl+C to stop)..."
+	if command -v fswatch &>/dev/null; then
+		fswatch -o "$f" | while read -r _; do
+			echo "--- $(date +%H:%M:%S) ---"
+			"$0" "$cmd" "$f" 2>&1
+		done
+	else
+		# Fallback: polling every 2 seconds
+		local last_mtime=""
+		while true; do
+			local mtime; mtime="$(stat -f %m "$f" 2>/dev/null)" || mtime=""
+			if [[ "$mtime" != "$last_mtime" && -n "$mtime" ]]; then
+				last_mtime="$mtime"
+				echo "--- $(date +%H:%M:%S) ---"
+				"$0" "$cmd" "$f" 2>&1
+			fi
+			sleep 2
+		done
+	fi
+}
+
+
+
+cmd_diff() {
+	local a="${1:-}" b="${2:-}"
+	[[ -z "$a" || -z "$b" ]] && die "Usage: spec diff <file-a> <file-b>"
+	[[ -f "$a" ]] || die "File not found: $a"
+	[[ -f "$b" ]] || die "File not found: $b"
+	is_safe_path "$a" || exit 1
+	is_safe_path "$b" || exit 1
+	local ta; ta="$(mktemp -t spec_diff_a_XXXXXX.json)"
+	local tb; tb="$(mktemp -t spec_diff_b_XXXXXX.json)"
+	spec_to_json "$a" "$ta" || die "Cannot parse $a"
+	spec_to_json "$b" "$tb" || die "Cannot parse $b"
+	python3 -c "
+import json, sys
+da = json.load(open(sys.argv[1]))
+db = json.load(open(sys.argv[2]))
+for k in sorted(set(list(da.keys()) + list(db.keys()))):
+	va = json.dumps(da.get(k, '__MISSING__'))
+	vb = json.dumps(db.get(k, '__MISSING__'))
+	if va != vb:
+		print(f'  {k}: {va} -> {vb}')
+" "$ta" "$tb" 2>/dev/null
+	rm -f "$ta" "$tb" 2>/dev/null
+}
+
+cmd_export_eval() {
+	local f="${1:-}" out="" unsafe_write=false
+	while [[ $# -gt 0 ]]; do case "$1" in
+		--output) out="$2"; shift 2 ;;
+		--unsafe-write) unsafe_write=true; shift ;;
+		*) shift ;;
+	esac; done
+	[[ -z "$f" ]] && die "Usage: spec export-eval <file> [--output <path>]"
+	[[ -f "$f" ]] || die "File not found: $f"
+	is_safe_path "$f" || exit 1
+	local tmp; tmp="$(mktemp -t spec_eval_XXXXXX.json)"
+	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
+	out="${out:-eval_suite.json}"
+	enforce_safe_write_path "$out" "$unsafe_write"
+	python3 -c "
+import json, sys
+spec = json.load(open(sys.argv[1]))
+suite = {'name': spec.get('name', 'spec'), 'description': spec.get('goal', ''), 'tests': []}
+for er in spec.get('eval_requirements', []):
+	t = {'name': er.get('description', 'check'), 'check': er.get('check_type', 'command_succeeds')}
+	if 'params' in er: t['params'] = er['params']
+	suite['tests'].append(t)
+print(json.dumps(suite, indent=2))
+" "$tmp" > "$out" 2>/dev/null || die "Eval export failed"
+	rm -f "$tmp" 2>/dev/null
+	echo "Exported eval suite: $out"
+}
+
+cmd_ci() { spec_cmd_ci "$@"; }
+
+cmd_template() { spec_cmd_template "$@"; }
+
+cmd_export_unified() { spec_cmd_export_unified "$@"; }
+
+cmd_init_interactive() { spec_cmd_init_interactive "$@"; }
+
+cmd_doctor() { spec_cmd_doctor "$@"; }
+
+cmd_changelog() { spec_cmd_changelog "$@"; }
+
+cmd_graph() { spec_cmd_graph "$@"; }
+
+main() {
+	local cmd="${1:-help}"; shift 2>/dev/null || true
+	SPEC_ACTIVE_COMMAND="$cmd"
+	case "$cmd" in
+		version) cmd_version "$@" ;; help|--help|-h) cmd_help ;;
+		init|create) cmd_init "$@" ;; validate) cmd_validate "$@" ;;
+		render) cmd_render "$@" ;; export-agent-context) cmd_export "$@" ;;
+		export) cmd_export_unified "$@" ;;
+		list) cmd_list "$@" ;; info) cmd_info "$@" ;; validate-all) cmd_validate_all "$@" ;;
+		search) cmd_search "$@" ;; status) cmd_status "$@" ;;
+		convert) cmd_convert "$@" ;; watch) cmd_watch "$@" ;;
+		diff) cmd_diff "$@" ;; export-eval) cmd_export_eval "$@" ;;
+		ci) cmd_ci "$@" ;; template) cmd_template "$@" ;;
+		init-interactive) cmd_init_interactive "$@" ;;
+		doctor) cmd_doctor "$@" ;; changelog) cmd_changelog "$@" ;;
+		graph) cmd_graph "$@" ;;
+		*) echo "Unknown: $cmd. Run 'spec help'."; exit 1 ;;
+	esac
+}
+main "$@"

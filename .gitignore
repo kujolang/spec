@@ -1,0 +1,11 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+/test_*.kujo
+/artifacts/
+/spec_results/
+/snapshots/
+tests/contract_tests.out
+tests/security_tests.out
+tests/integration_tests.out

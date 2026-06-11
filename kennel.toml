@@ -1,0 +1,44 @@
+[package]
+name = "spec"
+version = "0.1.0"
+description = "Structured task definition format for AI-native development — turns messy human instructions into clear machine-readable implementation context."
+license = "MIT"
+authors = ["Kujolang <contact@kujolang.ai>"]
+homepage = "https://github.com/kujolang/spec"
+repository = "https://github.com/kujolang/spec"
+documentation = "https://github.com/kujolang/spec/blob/main/docs/"
+keywords = ["kujo", "spec", "task-definition", "agents", "ai-native"]
+categories = ["ai", "developer-tools"]
+readme = "README.md"
+
+[package.status]
+stage = "experimental"
+stability = "early"
+public_api = true
+notes = "Schema and CLI are usable now, but spec format ergonomics may evolve."
+
+[kujo]
+minimum_version = "0.1.0"
+entry = "scripts/spec"
+sources = ["src", "."]
+includes = ["README.md", "tests", "examples", "schema", "docs", "fixtures"]
+excludes = [".git", "kennel_packages", "dist", "build", "node_modules"]
+
+[build]
+command = ""
+output = "dist"
+artifacts = []
+
+[dependencies]
+
+[dev-dependencies]
+
+[scripts]
+test = "bash tests/run_tests.sh"
+release-gates = "bash scripts/release_quality_gates.sh"
+supply-chain = "bash scripts/supply_chain_policy_check.sh"
+
+[package.exports]
+validate = "src/validate.kujo"
+render = "src/render.kujo"
+export = "src/export.kujo"

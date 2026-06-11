@@ -1,0 +1,35 @@
+# Valid full spec
+name: "Full spec with all fields"
+goal: "This spec exercises every optional field."
+version: "1.0.0"
+background: "This is background context."
+scope: "This is the scope."
+non_goals:
+  - "Do not do this thing"
+  - "Do not do that thing"
+relevant_systems:
+  - "system-alpha"
+  - "system-beta"
+likely_files:
+  - "src/foo.kujo"
+  - "tests/foo_tests.kujo"
+acceptance_criteria:
+  - "Criterion 1"
+  - "Criterion 2"
+risks:
+  - "Risk one"
+  - "Risk two"
+dependencies:
+  - "dep-one"
+  - "dep-two"
+review_expectations:
+  - "Code review"
+  - "Security audit"
+human_approval_points:
+  - "Before deployment"
+  - "After testing"
+estimated_effort: "2 weeks"
+priority: "critical"
+assignee: "dev"
+tags:
+  - "test"

@@ -1,0 +1,3 @@
+name = "Minimal valid spec in TOML"
+goal = "A minimal spec file in TOML format."
+version = "0.1.0"

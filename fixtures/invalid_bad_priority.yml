@@ -1,0 +1,4 @@
+# Invalid spec — invalid priority
+name: "Invalid priority"
+goal: "This spec has an invalid priority value."
+priority: "urgent"

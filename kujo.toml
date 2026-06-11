@@ -1,0 +1,7 @@
+[package]
+# Canonical package metadata is defined in kennel.toml.
+# Keep this identity aligned for tool compatibility.
+name = "spec"
+version = "0.1.0"
+
+[dependencies]

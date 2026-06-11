@@ -1,0 +1,31 @@
+{
+  "name": "deterministic-release-fixture",
+  "goal": "Deterministic release fixture for green gate validation of Spec v0.1.0.",
+  "version": "0.1.0",
+  "priority": "medium",
+  "acceptance_criteria": [
+    "All 11 tests pass with exit code 0",
+    "Release quality gates pass (17/17 checks)",
+    "Supply chain policy check passes (10/10 checks)",
+    "Doc command parity check passes (6/6 commands)",
+    "Runtime parity check passes (3/3 modules)",
+    "spec version prints correct version",
+    "spec help prints usage information",
+    "spec validate passes on valid spec",
+    "spec validate fails on invalid spec",
+    "spec render produces valid markdown",
+    "spec export-agent-context produces valid agent context"
+  ],
+  "tags": ["release", "fixture", "deterministic", "v0.1.0"],
+  "metadata": {
+    "release_date": "2026-05-25",
+    "test_suite": "11 tests",
+    "verification_scripts": [
+      "tests/run_tests.sh",
+      "scripts/release_quality_gates.sh",
+      "scripts/supply_chain_policy_check.sh",
+      "scripts/verify_docs_command_parity.sh",
+      "scripts/verify_test_runtime_parity.sh"
+    ]
+  }
+}

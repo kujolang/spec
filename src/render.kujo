@@ -1,0 +1,131 @@
+# Spec Renderer — renders spec JSON to Markdown.
+# Called as: kujo run src/render.kujo --json <tmp-file>
+
+from src.common import dict_get, dict_get_arr
+
+export func render(spec) {
+	name := dict_get(spec, "name", "Untitled")
+	goal := dict_get(spec, "goal", "")
+	ver := dict_get(spec, "version", "0.1.0")
+	pri := dict_get(spec, "priority", "medium")
+	asn := dict_get(spec, "assignee", "")
+	eff := dict_get(spec, "estimated_effort", "")
+	ehrs := dict_get(spec, "estimated_hours", "")
+	bg := dict_get(spec, "background", "")
+	sc := dict_get(spec, "scope", "")
+	st := dict_get(spec, "status", "draft")
+	cid := dict_get(spec, "id", "")
+	cat := dict_get(spec, "created_at", "")
+
+	markdown := "# Spec: " + name + "\n\n"
+
+	markdown = markdown + "| | |\n|---|---|\n"
+	markdown = markdown + "| **Priority** | " + pri + " |\n"
+	markdown = markdown + "| **Status** | " + st + " |\n"
+	markdown = markdown + "| **Version** | " + ver + " |\n"
+	if cid != "" { markdown = markdown + "| **ID** | `" + cid + "` |\n" }
+	if asn != "" { markdown = markdown + "| **Assignee** | " + asn + " |\n" }
+	if eff != "" { markdown = markdown + "| **Estimated Effort** | " + eff + " |\n" }
+	if ehrs != "" && ehrs != "0" { markdown = markdown + "| **Est. Hours** | " + ehrs + " |\n" }
+	if cat != "" { markdown = markdown + "| **Created** | " + cat + " |\n" }
+	markdown = markdown + "\n"
+
+	tags := dict_get_arr(spec, "tags")
+	if len(tags) > 0 {
+		markdown = markdown + "**Tags:** "
+		ti := 0
+		while ti < len(tags) { if ti > 0 { markdown = markdown + ", " }; markdown = markdown + "`" + tags[ti] + "`"; ti := ti + 1 }
+		markdown = markdown + "\n\n"
+	}
+
+	markdown = markdown + "## Goal\n\n" + goal + "\n\n"
+	if bg != "" { markdown = markdown + "## Background\n\n" + bg + "\n\n" }
+	if sc != "" { markdown = markdown + "## Scope\n\n" + sc + "\n\n" }
+
+	ng := dict_get_arr(spec, "non_goals")
+	if len(ng) > 0 { markdown = markdown + "## Non-Goals\n\n"; ni := 0; while ni < len(ng) { markdown = markdown + "- " + ng[ni] + "\n"; ni := ni + 1 }; markdown = markdown + "\n" }
+
+	ss := dict_get_arr(spec, "relevant_systems")
+	if len(ss) > 0 { markdown = markdown + "## Relevant Systems\n\n"; si := 0; while si < len(ss) { markdown = markdown + "- `" + ss[si] + "`\n"; si := si + 1 }; markdown = markdown + "\n" }
+
+	fls := dict_get_arr(spec, "likely_files")
+	if len(fls) > 0 { markdown = markdown + "## Likely Files\n\n"; fi := 0; while fi < len(fls) { markdown = markdown + "- `" + fls[fi] + "`\n"; fi := fi + 1 }; markdown = markdown + "\n" }
+
+	ac := dict_get_arr(spec, "acceptance_criteria")
+	if len(ac) > 0 { markdown = markdown + "## Acceptance Criteria\n\n"; ai := 0; while ai < len(ac) { markdown = markdown + to_string(ai + 1) + ". " + ac[ai] + "\n"; ai := ai + 1 }; markdown = markdown + "\n" }
+
+	ev := dict_get_arr(spec, "eval_requirements")
+	if len(ev) > 0 {
+		markdown = markdown + "## Eval Requirements\n\n| # | Description | Check Type |\n|---|---|---|\n"
+		ei := 0
+		while ei < len(ev) {
+			er := ev[ei]
+			desc := dict_get(er, "description", "")
+			ct := dict_get(er, "check_type", "")
+			markdown = markdown + "| " + to_string(ei + 1) + " | " + desc + " | `" + ct + "` |\n"
+			ei := ei + 1
+		}
+		markdown = markdown + "\n"
+	}
+
+	rk := dict_get_arr(spec, "risks")
+	if len(rk) > 0 {
+		markdown = markdown + "## Risks\n\n| # | Risk | Severity | Mitigation |\n|---|---|---|---|\n"
+		ri := 0
+		while ri < len(rk) {
+			robj := rk[ri]
+			rd := dict_get(robj, "risk", "")
+			sv := dict_get(robj, "severity", "")
+			mt := dict_get(robj, "mitigation", "")
+			markdown = markdown + "| " + to_string(ri + 1) + " | " + rd + " | " + sv + " | " + mt + " |\n"
+			ri := ri + 1
+		}
+		markdown = markdown + "\n"
+	}
+
+	dp := dict_get_arr(spec, "dependencies")
+	if len(dp) > 0 {
+		markdown = markdown + "## Dependencies\n\n"
+		di := 0
+		while di < len(dp) {
+			dep := dp[di]
+			is_obj := has_key(dep, "description")
+			if is_obj == true || is_obj == 1 {
+				dtype := dict_get(dep, "type", "blocked_by")
+				desc := dict_get(dep, "description", "")
+				sid := dict_get(dep, "spec_id", "")
+				markdown = markdown + "- "
+				if dtype == "blocks" { markdown = markdown + "**Blocks:** " }
+				else { markdown = markdown + "**Blocked by:** " }
+				markdown = markdown + desc
+				if sid != "" { markdown = markdown + " (`" + sid + "`)" }
+				markdown = markdown + "\n"
+			} else {
+				markdown = markdown + "- " + dep + "\n"
+			}
+			di := di + 1
+		}
+		markdown = markdown + "\n"
+	}
+
+	rv := dict_get_arr(spec, "review_expectations")
+	if len(rv) > 0 { markdown = markdown + "## Review Expectations\n\n"; vi := 0; while vi < len(rv) { markdown = markdown + "- " + rv[vi] + "\n"; vi := vi + 1 }; markdown = markdown + "\n" }
+
+	hp := dict_get_arr(spec, "human_approval_points")
+	if len(hp) > 0 { markdown = markdown + "## Human Approval Points\n\n"; hi := 0; while hi < len(hp) { markdown = markdown + to_string(hi + 1) + ". " + hp[hi] + "\n"; hi := hi + 1 }; markdown = markdown + "\n" }
+
+	markdown = markdown + "---\n\n*Generated by Spec v" + ver + "*\n"
+	return markdown
+}
+
+func main() {
+	parser := arg_parser()
+	parser := parser.add_argument("--json", "type", "string", "default", "", "help", "Path to parsed spec JSON")
+	parsed_args := parser.parse()
+	json_file := trim(to_string(parsed_args["json"]))
+	if json_file == "" { print("Error: --json required"); return }
+	raw := read_file(json_file)
+	spec := parse_json(raw)
+	print(render(spec))
+}
+main()

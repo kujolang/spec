@@ -1,0 +1,48 @@
+# Spec — Example: Complex multi-system integration
+
+name: "Build Spec tool for Kujo ecosystem"
+goal: "Design and implement a structured task definition format (.spec.yml/.spec.toml) with CLI tooling (init, validate, render, export-agent-context)."
+version: "0.1.0"
+background: "Most agent failures begin before the agent writes code — they begin because the work was vague. Spec gives Kujo a native way to describe software tasks that agents can consume as structured implementation context."
+scope: "JSON Schema for .spec.yml files, CLI tool with init/validate/render/export commands, YAML and TOML format support, Markdown rendering, Agent prompt export, Eval hook definitions."
+non_goals:
+  - "GUI or web interface (CLI only for MVP)"
+  - "Real-time collaboration features"
+  - "Integration with non-Kujo tools"
+relevant_systems:
+  - "kujo-eval"
+  - "kujo-dispatch"
+  - "kujo-scout"
+  - "kujo-mcp"
+likely_files:
+  - "kujo-spec/main.kujo"
+  - "kujo-spec/src/common.kujo"
+  - "kujo-spec/src/validator.kujo"
+  - "kujo-spec/src/renderer.kujo"
+  - "kujo-spec/src/exporter.kujo"
+  - "kujo-spec/schema/spec.schema.json"
+acceptance_criteria:
+  - "spec init creates a valid template file in YAML or TOML format"
+  - "spec validate correctly identifies valid and invalid spec files"
+  - "spec render produces well-formatted Markdown from any valid spec"
+  - "spec export-agent-context produces structured agent prompt"
+  - "All test suites pass with exit code 0"
+risks:
+  - "YAML parser may not handle all edge cases"
+  - "Schema evolution could break existing spec files"
+dependencies:
+  - "kujo-eval for eval requirement integration"
+  - "Kujo runtime v0.1.0+"
+review_expectations:
+  - "Architecture review for schema design"
+  - "Code review for CLI ergonomics"
+human_approval_points:
+  - "After schema design is finalized"
+  - "Before publishing package to kennel registry"
+estimated_effort: "5 days"
+priority: "high"
+tags:
+  - "kujo"
+  - "spec"
+  - "ai-native"
+  - "tooling"

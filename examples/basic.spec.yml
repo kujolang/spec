@@ -1,0 +1,42 @@
+# Spec — Example: Basic Feature Implementation
+
+name: "Add user avatar upload endpoint"
+goal: "Implement a REST API endpoint that allows authenticated users to upload and manage their profile avatar images."
+version: "0.1.0"
+background: "Users currently cannot set profile avatars. This feature is the #1 requested enhancement from the community feedback survey (Q1 2026)."
+scope: "POST /api/users/:id/avatar, GET /api/users/:id/avatar, DELETE /api/users/:id/avatar. Support JPEG and PNG up to 5MB with auto-resize."
+non_goals:
+  - "Animated GIF support (future enhancement)"
+  - "Avatar cropping UI (separate frontend task)"
+  - "CDN integration (separate infrastructure task)"
+relevant_systems:
+  - "kujo-cms (user profile module)"
+  - "kujo-dispatch (background image processing)"
+likely_files:
+  - "src/routes/users.kujo"
+  - "src/handlers/avatar.kujo"
+  - "tests/avatar_tests.kujo"
+acceptance_criteria:
+  - "POST /api/users/:id/avatar returns 201 with avatar URL"
+  - "GET /api/users/:id/avatar returns 200 or 404 if none set"
+  - "DELETE /api/users/:id/avatar returns 204"
+  - "Uploads larger than 5MB return 413"
+  - "All endpoints pass input validation and sanitization"
+risks:
+  - "Large file uploads could exhaust disk space"
+  - "Malicious file uploads could bypass type detection"
+dependencies:
+  - "User authentication system"
+  - "File storage service"
+review_expectations:
+  - "Code review by backend team lead"
+  - "Security review for file upload handling"
+human_approval_points:
+  - "After API design document is complete"
+  - "Before deploying to production"
+estimated_effort: "3 days"
+priority: "high"
+tags:
+  - "api"
+  - "users"
+  - "feature"

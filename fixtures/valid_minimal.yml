@@ -1,0 +1,4 @@
+# Valid minimal spec
+name: "Minimal valid spec"
+goal: "A minimal spec file that meets all required fields."
+version: "0.1.0"
