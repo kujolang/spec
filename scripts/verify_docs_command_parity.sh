@@ -39,7 +39,7 @@ check "spec ci option-first ordering" bash -c "'$SPEC' ci --format json '$PROJEC
 check "spec ci --max-files" bash -c "'$SPEC' ci '$PROJECT_DIR/examples' --format json --max-files 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"total\"] == 1 and d.get(\"truncated\") is True'"
 check "spec ci --jobs" bash -c "'$SPEC' ci '$PROJECT_DIR/examples' --format json --jobs 2 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[\"failed\"] == 0 and d[\"total\"] >= 1'"
 check "spec doctor" bash -c "'$SPEC' doctor | grep -q 'Spec Doctor'"
-check "spec changelog" bash -c "ref=\$(git rev-parse --verify HEAD~1 2>/dev/null); '$SPEC' changelog \"\$ref\" >/dev/null"
+check "spec changelog" bash -c "ref=\$(git rev-parse --verify HEAD~1 2>/dev/null || git rev-parse --verify HEAD); '$SPEC' changelog \"\$ref\" >/dev/null"
 check "spec graph mermaid" bash -c "'$SPEC' graph '$PROJECT_DIR/examples' --format mermaid | grep -q 'graph TD'"
 check "spec graph dot" bash -c "'$SPEC' graph '$PROJECT_DIR/examples' --format dot | grep -q 'digraph Specs'"
 check "completion parity script" bash -c "'$PROJECT_DIR/scripts/verify_completion_parity.sh' >/dev/null"
