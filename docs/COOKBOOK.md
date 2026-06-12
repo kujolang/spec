@@ -7,12 +7,7 @@ Real-world usage patterns and examples for Spec.
 ```bash
 # .github/workflows/spec-check.yml
 - name: Validate all specs
-  run: |
-    spec validate-all . --quiet
-    if [ $? -ne 0 ]; then
-      echo "Spec validation failed. Fix spec files before merging."
-      exit 1
-    fi
+  run: spec validate-all . --quiet
 ```
 
 ## Generating Project Documentation from Specs
@@ -20,7 +15,7 @@ Real-world usage patterns and examples for Spec.
 ```bash
 # Render all specs to a docs directory
 mkdir -p docs/specs/
-for f in $(spec list --json . | python3 -c "import json,sys; [print(d['file']) for d in json.load(sys.stdin)]"); do
+spec list --json . | python3 -c "import json,sys; [print(d['file']) for d in json.load(sys.stdin)]" | while IFS= read -r f; do
   spec render "$f" --output "docs/specs/$(basename "$f" .yml).md"
 done
 ```
@@ -59,15 +54,7 @@ spec status specs/dark-mode.spec.yml --set completed
 
 ```bash
 # Create a spec from a GitHub issue (requires gh CLI)
-gh issue view 123 --json title,body | python3 -c "
-import json,sys
-issue = json.load(sys.stdin)
-print(f'name: \"{issue[\"title\"]}\"')
-print(f'goal: \"{issue[\"body\"][:200]}\"')
-print('version: \"0.1.0\"')
-print('priority: \"medium\"')
-" > specs/issue-123.spec.yml
-
+spec init --from github:OWNER/REPO/123 --output specs/issue-123.spec.yml
 spec validate specs/issue-123.spec.yml
 ```
 
@@ -76,9 +63,9 @@ spec validate specs/issue-123.spec.yml
 ```bash
 # .git/hooks/pre-commit
 #!/bin/bash
-changed_specs=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.spec\.(yml|yaml|toml|json)$')
+changed_specs=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.spec\.(yml|yaml|toml|json)$' || true)
 if [ -n "$changed_specs" ]; then
-  echo "$changed_specs" | while read f; do
+  echo "$changed_specs" | while IFS= read -r f; do
     spec validate "$f" --quiet || exit 1
   done
 fi

@@ -1,5 +1,7 @@
 # Contributing to Spec
 
+Exclude generated/bulk paths from the main sweep unless the task explicitly targets them; document the search exclusions you used.
+
 ## Setup
 
 ```bash
@@ -39,6 +41,15 @@ For regulated environments, enforce template provenance:
 - **Kujo modules**: tabs for indentation, `has_key()` pattern for dict access, shared helpers imported from `src.common`
 - **Python**: type hints, `sys.argv` for file paths (never string interpolation), `yaml.safe_load()`
 - **Tests**: use `check()`, `check_output()`, `check_fail()` from `tests/test_helpers.sh`
+
+## Agent Search Hygiene
+
+- Start with `README.md`, this file, and `docs/PROJECT_STRUCTURE.md`.
+- Treat `examples/` as canonical copyable examples.
+- Treat `fixtures/` as test data; do not shorten fixtures when explicit shape helps a test.
+- Treat `docs/COMMAND_INVENTORY.md` as generated from `scripts/spec help`.
+- Exclude generated or bulk review paths from broad scans unless the task targets them directly, for example: `docs/COMMAND_INVENTORY.md`, `docs/IMPROVEMENT_CHECKLIST.md`, `docs/READINESS_REVIEW.md`, and `docs/codex-*.md`.
+- Prefer targeted searches such as `rg -n "pattern" README.md CONTRIBUTING.md docs src scripts examples tests` and add `-g '!docs/COMMAND_INVENTORY.md'` when generated command output would dominate.
 
 ## Project Structure
 

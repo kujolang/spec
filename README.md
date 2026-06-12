@@ -10,6 +10,8 @@
 
 A `.spec.yml` file turns human instructions into a clear, reviewable task contract.
 
+Prioritize copyable examples over tests: examples should model the most token-efficient idioms we want agents to imitate.
+
 ## Why This Exists
 
 Most agent failures start with vague requirements, not code generation.
@@ -29,23 +31,28 @@ Spec gives Kujo a native task-contract format before implementation starts:
 ## Quick Start
 
 ```bash
-# Make spec available on your PATH
 export PATH="/path/to/kujo-spec/scripts:$PATH"
 
-# Create a new spec
-spec init --name "my-feature"
+mkdir -p specs
+cat > specs/dark-mode.spec.yml <<'YAML'
+name: "Add dark mode"
+goal: "Add a theme toggle and persist the selected color scheme."
+priority: "medium"
+acceptance_criteria:
+  - "Users can switch between light and dark themes"
+  - "The selected theme persists after reload"
+YAML
 
-# Edit the spec file
-vim spec.yml
+spec validate specs/dark-mode.spec.yml
+spec render specs/dark-mode.spec.yml
+spec export-agent-context specs/dark-mode.spec.yml
+```
 
-# Validate it
-spec validate spec.yml
+Expected validation output:
 
-# Render to Markdown
-spec render spec.yml
-
-# Export as agent context
-spec export-agent-context spec.yml
+```text
+Validating: specs/dark-mode.spec.yml
+PASS: Spec is valid
 ```
 
 ## Requirements
