@@ -1,7 +1,7 @@
 # Spec Exporter — exports spec to agent context prompt.
 # Called as: kujo run src/export.kujo --json <tmp-file> [--format agent|dispatch]
 
-from src.common import dict_get, dict_get_arr
+from src.common import dict_get, dict_get_arr, bullet_lines, code_bullet_lines, numbered_lines
 
 export func export_agent(spec) {
 	name := dict_get(spec, "name", "Untitled")
@@ -23,17 +23,17 @@ export func export_agent(spec) {
 	if sc != "" || len(ng) > 0 {
 		context = context + "### Scope & Boundaries\n\n"
 		if sc != "" { context = context + "**In scope:**\n" + sc + "\n\n" }
-		if len(ng) > 0 { context = context + "**Out of scope (do NOT do):**\n"; ni := 0; while ni < len(ng) { context = context + "- " + ng[ni] + "\n"; ni := ni + 1 }; context = context + "\n" }
+		if len(ng) > 0 { context = context + "**Out of scope (do NOT do):**\n" + bullet_lines(ng) + "\n" }
 	}
 
 	ss := dict_get_arr(spec, "relevant_systems")
-	if len(ss) > 0 { context = context + "### Relevant Systems\n"; si := 0; while si < len(ss) { context = context + "- " + ss[si] + "\n"; si := si + 1 }; context = context + "\n" }
+	if len(ss) > 0 { context = context + "### Relevant Systems\n" + bullet_lines(ss) + "\n" }
 
 	fls := dict_get_arr(spec, "likely_files")
-	if len(fls) > 0 { context = context + "### Likely Files\n"; fi := 0; while fi < len(fls) { context = context + "- `" + fls[fi] + "`\n"; fi := fi + 1 }; context = context + "\n" }
+	if len(fls) > 0 { context = context + "### Likely Files\n" + code_bullet_lines(fls) + "\n" }
 
 	ac := dict_get_arr(spec, "acceptance_criteria")
-	if len(ac) > 0 { context = context + "### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n"; ai := 0; while ai < len(ac) { context = context + to_string(ai + 1) + ". " + ac[ai] + "\n"; ai := ai + 1 }; context = context + "\n" }
+	if len(ac) > 0 { context = context + "### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n" + numbered_lines(ac) + "\n" }
 
 	rk := dict_get_arr(spec, "risks")
 	if len(rk) > 0 {
@@ -44,10 +44,10 @@ export func export_agent(spec) {
 	}
 
 	dp := dict_get_arr(spec, "dependencies")
-	if len(dp) > 0 { context = context + "### Dependencies\n"; di := 0; while di < len(dp) { context = context + "- " + dp[di] + "\n"; di := di + 1 }; context = context + "\n" }
+	if len(dp) > 0 { context = context + "### Dependencies\n" + bullet_lines(dp) + "\n" }
 
 	hp := dict_get_arr(spec, "human_approval_points")
-	if len(hp) > 0 { context = context + "### Human Approval Required At\n"; hi := 0; while hi < len(hp) { context = context + to_string(hi + 1) + ". " + hp[hi] + "\n"; hi := hi + 1 }; context = context + "\n" }
+	if len(hp) > 0 { context = context + "### Human Approval Required At\n" + numbered_lines(hp) + "\n" }
 
 	context = context + "### Priority\n**" + pri + "** priority"
 	if eff != "" { context = context + " | Estimated effort: " + eff }

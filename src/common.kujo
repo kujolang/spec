@@ -51,3 +51,44 @@ export func has_flag(args_list, flag_name) {
 	}
 	return false
 }
+
+export func bullet_lines(items) {
+	out := ""
+	idx := 0
+	while idx < len(items) {
+		out = out + "- " + items[idx] + "\n"
+		idx := idx + 1
+	}
+	return out
+}
+
+export func code_bullet_lines(items) {
+	out := ""
+	idx := 0
+	while idx < len(items) {
+		out = out + "- `" + items[idx] + "`\n"
+		idx := idx + 1
+	}
+	return out
+}
+
+export func numbered_lines(items) {
+	out := ""
+	idx := 0
+	while idx < len(items) {
+		out = out + to_string(idx + 1) + ". " + items[idx] + "\n"
+		idx := idx + 1
+	}
+	return out
+}
+
+export func inline_code_csv(items) {
+	out := ""
+	idx := 0
+	while idx < len(items) {
+		if idx > 0 { out = out + ", " }
+		out = out + "`" + items[idx] + "`"
+		idx := idx + 1
+	}
+	return out
+}
