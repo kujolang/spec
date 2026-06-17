@@ -3,6 +3,23 @@
 
 from src.common import dict_get, dict_get_arr, bullet_lines, code_bullet_lines, numbered_lines
 
+func section(title, body) {
+	return "### " + title + "\n" + body + "\n\n"
+}
+
+func list_section(title, body) {
+	return "### " + title + "\n" + body + "\n"
+}
+
+func risk_line(risk) {
+	rd := dict_get(risk, "risk", "")
+	sv := dict_get(risk, "severity", "")
+	mt := dict_get(risk, "mitigation", "")
+	line := "- **[" + sv + "]** " + rd
+	if mt != "" { line = line + " -- *Mitigation: " + mt + "*" }
+	return line + "\n"
+}
+
 export func export_agent(spec) {
 	name := dict_get(spec, "name", "Untitled")
 	goal := dict_get(spec, "goal", "")
@@ -13,11 +30,11 @@ export func export_agent(spec) {
 	eff := dict_get(spec, "estimated_effort", "")
 
 	context := "## Task: " + name + "\n\n"
-	context = context + "### Goal\n" + goal + "\n\n"
+	context = context + section("Goal", goal)
 	context = context + "**Status:** " + st + " | **Priority:** " + pri
 	if eff != "" { context = context + " | **Effort:** " + eff }
 	context = context + "\n\n"
-	if bg != "" { context = context + "### Background\n" + bg + "\n\n" }
+	if bg != "" { context = context + section("Background", bg) }
 
 	ng := dict_get_arr(spec, "non_goals")
 	if sc != "" || len(ng) > 0 {
@@ -27,27 +44,30 @@ export func export_agent(spec) {
 	}
 
 	ss := dict_get_arr(spec, "relevant_systems")
-	if len(ss) > 0 { context = context + "### Relevant Systems\n" + bullet_lines(ss) + "\n" }
+	if len(ss) > 0 { context = context + list_section("Relevant Systems", bullet_lines(ss)) }
 
 	fls := dict_get_arr(spec, "likely_files")
-	if len(fls) > 0 { context = context + "### Likely Files\n" + code_bullet_lines(fls) + "\n" }
+	if len(fls) > 0 { context = context + list_section("Likely Files", code_bullet_lines(fls)) }
 
 	ac := dict_get_arr(spec, "acceptance_criteria")
-	if len(ac) > 0 { context = context + "### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n" + numbered_lines(ac) + "\n" }
+	if len(ac) > 0 { context = context + list_section("Acceptance Criteria (Definition of Done)", "Your work is complete ONLY when ALL of these are true:\n\n" + numbered_lines(ac)) }
 
 	rk := dict_get_arr(spec, "risks")
 	if len(rk) > 0 {
 		context = context + "### Known Risks\n"
 		ri := 0
-		while ri < len(rk) { robj := rk[ri]; rd := dict_get(robj, "risk", ""); sv := dict_get(robj, "severity", ""); mt := dict_get(robj, "mitigation", ""); context = context + "- **[" + sv + "]** " + rd; if mt != "" { context = context + " -- *Mitigation: " + mt + "*" }; context = context + "\n"; ri := ri + 1 }
+		while ri < len(rk) {
+			context = context + risk_line(rk[ri])
+			ri := ri + 1
+		}
 		context = context + "\n"
 	}
 
 	dp := dict_get_arr(spec, "dependencies")
-	if len(dp) > 0 { context = context + "### Dependencies\n" + bullet_lines(dp) + "\n" }
+	if len(dp) > 0 { context = context + list_section("Dependencies", bullet_lines(dp)) }
 
 	hp := dict_get_arr(spec, "human_approval_points")
-	if len(hp) > 0 { context = context + "### Human Approval Required At\n" + numbered_lines(hp) + "\n" }
+	if len(hp) > 0 { context = context + list_section("Human Approval Required At", numbered_lines(hp)) }
 
 	context = context + "### Priority\n**" + pri + "** priority"
 	if eff != "" { context = context + " | Estimated effort: " + eff }

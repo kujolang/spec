@@ -36,6 +36,11 @@ func normalize_format(raw_format) {
 	return fmt
 }
 
+func fail(message) {
+	print("Error: " + message)
+	exit(1)
+}
+
 func main() {
 	parser := arg_parser()
 	parser := parser.add_argument("--input", "type", "string", "default", "", "help", "Input file path")
@@ -48,45 +53,38 @@ func main() {
 	to_format := normalize_format(parsed_args["to"])
 
 	if input_file == "" {
-		print("Error: --input required")
-		exit(1)
+		fail("--input required")
 	}
 	if from_format != "json" && from_format != "yaml" && from_format != "toml" {
-		print("Error: --from must be json|yaml|toml")
-		exit(1)
+		fail("--from must be json|yaml|toml")
 	}
 	if to_format != "json" && to_format != "yaml" && to_format != "toml" {
-		print("Error: --to must be json|yaml|toml")
-		exit(1)
+		fail("--to must be json|yaml|toml")
 	}
 
 	raw_text := ""
 	try {
 		raw_text = read_file(input_file)
 	} except err {
-		print("Error: failed to read input file")
-		exit(1)
+		fail("failed to read input file")
 	}
 
 	parsed := {}
 	try {
 		parsed = parse_input(raw_text, from_format)
 	} except err {
-		print("Error: failed to parse input")
-		exit(1)
+		fail("failed to parse input")
 	}
 
 	if type(parsed) == "dict" && has_key(parsed, "error") {
-		print("Error: " + to_string(parsed["error"]))
-		exit(1)
+		fail(to_string(parsed["error"]))
 	}
 
 	output_text := ""
 	try {
 		output_text = serialize_output(parsed, to_format)
 	} except err {
-		print("Error: failed to serialize output")
-		exit(1)
+		fail("failed to serialize output")
 	}
 
 	print(output_text)

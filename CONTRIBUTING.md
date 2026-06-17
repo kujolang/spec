@@ -39,6 +39,7 @@ For regulated environments, enforce template provenance:
 
 - **Shell scripts**: bash, `set -euo pipefail`, source shared helpers from `tests/test_helpers.sh`
 - **Kujo modules**: tabs for indentation, `has_key()` pattern for dict access, shared helpers imported from `src.common`
+- **Kujo output**: keep first examples direct; in larger renderers/exporters, prefer small local helpers for repeated section, row, and error-output patterns
 - **Python**: type hints, `sys.argv` for file paths (never string interpolation), `yaml.safe_load()`
 - **Tests**: use `check()`, `check_output()`, `check_fail()` from `tests/test_helpers.sh`
 

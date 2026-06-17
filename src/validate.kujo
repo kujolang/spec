@@ -182,6 +182,10 @@ func _check_risks(spec, errors, warnings) {
 	}
 }
 
+func print_invalid_result(message) {
+	print("{\"valid\": false, \"errors\": [\"" + message + "\"]}")
+}
+
 #
 # Main: read spec JSON file and validate
 #
@@ -192,19 +196,19 @@ func main() {
 	json_file := trim(to_string(parsed_args["json"]))
 
 	if json_file == "" {
-		print("{\"valid\": false, \"errors\": [\"No --json <file> argument provided\"]}")
+		print_invalid_result("No --json <file> argument provided")
 		return
 	}
 
 	raw := ""
 	try { raw = read_file(json_file) } except err {
-		print("{\"valid\": false, \"errors\": [\"Cannot read file: " + json_file + "\"]}")
+		print_invalid_result("Cannot read file: " + json_file)
 		return
 	}
 
 	spec := {}
 	try { spec = parse_json(raw) } except err {
-		print("{\"valid\": false, \"errors\": [\"JSON parse error\"]}")
+		print_invalid_result("JSON parse error")
 		return
 	}
 
