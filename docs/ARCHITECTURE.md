@@ -127,3 +127,7 @@ Unsupported assumptions:
 - YAML parsing uses Python's `yaml.safe_load()` (safe)
 - No eval/exec of spec content
 - No API keys or secrets in spec files by design
+- File reads are restricted to the current project tree and reject path traversal plus symlink escapes.
+- Output writes can be restricted with `SPEC_SAFE_WRITE=on`; `--unsafe-write` is an explicit override.
+- User-home templates can be blocked with `SPEC_TEMPLATE_SOURCE_POLICY=project-only` or `--strict-template-source`.
+- Conversion caching uses canonical file paths and content-aware signatures so stale or colliding cache entries are not reused.

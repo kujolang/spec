@@ -103,7 +103,13 @@ In CI, keep specs alongside the code they gate:
 ```yaml
 # .github/workflows/spec-check.yml
 - name: Validate specs
-  run: spec validate-all ./specs --quiet
+  run: spec ci ./specs --strict --format github
+```
+
+For larger repositories, bound scan size and use deterministic parallel workers:
+
+```bash
+spec ci ./specs --strict --format json --max-files 500 --jobs 4
 ```
 
 ## Templates

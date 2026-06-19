@@ -12,6 +12,12 @@ A `.spec.yml` file turns human instructions into a clear, reviewable task contra
 
 Prioritize copyable examples over tests: examples should model the most token-efficient idioms we want agents to imitate.
 
+## Production Readiness
+
+Spec is built for production use in local development, CI, monorepos, and regulated automation environments. It includes path-boundary checks, symlink escape protection, safe-write controls, strict validation mode, generated command inventory checks, completion parity checks, fuzz coverage, benchmark gates, and release quality gates.
+
+No CLI can be universally production-ready without being validated against the target organization's runtime, CI runner, trust boundaries, and release process. For enterprise adoption, run the verification suite in your environment, pin `KUJO_BIN`, enable `SPEC_SAFE_WRITE=on`, and set `SPEC_TEMPLATE_SOURCE_POLICY=project-only` in CI.
+
 ## Why This Exists
 
 Most agent failures start with vague requirements, not code generation.
@@ -274,14 +280,22 @@ Spec is designed to integrate with the Kujo ecosystem:
 
 ## Repository Root Files
 
-This repository intentionally keeps several control files at the root. They are part of release and policy gates and should not be moved into `src/`:
+Runtime source lives in `src/`, CLI orchestration lives in `scripts/`, and generated/user-facing documentation lives in `docs/`. The root intentionally keeps package, release, policy, and ecosystem control files because external tooling expects them there.
+
+Keep these root files in place unless the corresponding release or package tooling is updated first:
 
 - `VERSION`
 - `RUNTIME_VERSION`
 - `kennel.toml`
 - `kujo.toml`
+- `package.json`
+- `Dockerfile`
+- `LICENSE`
+- `SECURITY.md`
+- `CONTRIBUTING.md`
+- `CHANGELOG.md`
 
-If you reorganize source code, keep these files in root unless release tooling is updated first.
+There are no duplicate root-level Kujo source modules to move into `src/`; the active Kujo modules are `src/common.kujo`, `src/convert.kujo`, `src/export.kujo`, `src/render.kujo`, and `src/validate.kujo`.
 
 ## Benchmark Methodology
 
