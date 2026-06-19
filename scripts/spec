@@ -19,6 +19,22 @@ fi
 
 die() { echo "Error: $*" >&2; exit 1; }
 
+validate_spec_name() {
+	local name="$1"
+	[[ -z "$name" ]] && return 0
+	if [[ ! "$name" =~ ^[a-zA-Z0-9\ _-]+$ ]]; then
+		die "Invalid name: '$name'. Names may only contain letters, numbers, spaces, underscores, and hyphens."
+	fi
+}
+
+validate_template_name() {
+	local name="$1"
+	[[ -n "$name" ]] || die "Template name is required"
+	if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+		die "Invalid template name: '$name'. Template names may only contain letters, numbers, underscores, and hyphens."
+	fi
+}
+
 # run_kujo — invoke the Kujo runtime with a timeout guard.
 # Usage: run_kujo <args...>
 # Respects SPEC_TIMEOUT env var (default: 30s).
@@ -74,9 +90,10 @@ is_safe_path() {
 
 invalidate_spec_cache() {
 	local f="$1"
-	local cache_dir cache_key
+	local cache_dir cache_key f_key
 	cache_dir="${TMPDIR:-/tmp}/.spec_cache"
-	cache_key="$(echo -n "$f" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
+	f_key="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || printf '%s' "$f")"
+	cache_key="$(printf '%s' "$f_key" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
 	if [[ -n "$cache_key" ]]; then
 		rm -f "$cache_dir/$cache_key.json" "$cache_dir/$cache_key.sig" 2>/dev/null || true
 	fi
@@ -84,7 +101,7 @@ invalidate_spec_cache() {
 
 spec_to_json() {
 	local f="$1" out="$2"
-	local fsize cur_mtime cur_sig cached_sig
+	local fsize cur_mtime cur_hash cur_sig cached_sig f_key
 
 	# Security: reject files larger than 1MB before parsing
 	fsize="$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)"
@@ -96,9 +113,11 @@ spec_to_json() {
 	local cache_dir="${TMPDIR:-/tmp}/.spec_cache"
 	mkdir -p "$cache_dir" 2>/dev/null || true
 	chmod 700 "$cache_dir" 2>/dev/null || true
-	local cache_key; cache_key="$(echo -n "$f" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
+	f_key="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || printf '%s' "$f")"
+	local cache_key; cache_key="$(printf '%s' "$f_key" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
 	cur_mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
-	cur_sig="$cur_mtime:$fsize"
+	cur_hash="$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1)" || cur_hash=""
+	cur_sig="$cur_mtime:$fsize:$cur_hash"
 	if [[ -n "$cache_key" ]]; then
 		local cache_file="$cache_dir/$cache_key.json"
 		local cache_sig="$cache_dir/$cache_key.sig"
@@ -137,22 +156,23 @@ validate_file_quiet() {
 	[[ -f "$f" ]] || return 1
 	is_safe_path "$f" || return 1
 
-	local tmp result valid warns
+	local tmp
+	case "$f" in
+	*.json)
+		local fsize
+		fsize="$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)"
+		[[ "$fsize" -le 1048576 ]] || return 1
+		python3 "$HELPER" validate-quiet "$f" "$strict" >/dev/null 2>&1
+		return $?
+		;;
+	esac
+
 	tmp="$(mktemp -t spec_validate_quiet_XXXXXX.json)"
 	spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
-	result="$("$KUJO_BIN" run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
-	result="$(augment_unknown_top_level_warnings "$tmp" "$result")"
-	valid="$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('valid',False))" 2>/dev/null)" || valid="False"
-
-	if [[ "$strict" == "true" ]]; then
-		warns="$(echo "$result" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('warnings',[])))" 2>/dev/null)" || warns=0
-		if [[ "$warns" -gt 0 ]]; then
-			valid="False"
-		fi
-	fi
-
+	python3 "$HELPER" validate-quiet "$tmp" "$strict" >/dev/null 2>&1
+	local rc=$?
 	rm -f "$tmp" 2>/dev/null
-	[[ "$valid" == "True" ]]
+	return "$rc"
 }
 
 augment_unknown_top_level_warnings() {
@@ -381,6 +401,7 @@ cmd_init() {
 	if [[ -n "$from" ]]; then
 		out="${out:-spec.$fmt}"
 		[[ "$fmt" =~ ^(yaml|yml|toml|json)$ ]] || die "Format must be yaml, toml, or json"
+		validate_spec_name "$name"
 		[[ -f "$out" ]] && die "File exists: $out. Use --output for different path."
 		enforce_safe_write_path "$out" "$unsafe_write"
 		_init_from "$from" "$out" "$fmt" "$name" "$strict_template_source"
@@ -393,10 +414,7 @@ cmd_init() {
 	[[ -f "$out" ]] && die "File exists: $out. Use --output for different path."
 	enforce_safe_write_path "$out" "$unsafe_write"
 
-	# Sanitize name: only allow alphanumeric, spaces, underscores, and hyphens
-	if [[ -n "$name" ]] && [[ ! "$name" =~ ^[a-zA-Z0-9\ _-]+$ ]]; then
-		die "Invalid name: '$name'. Names may only contain letters, numbers, spaces, underscores, and hyphens."
-	fi
+	validate_spec_name "$name"
 
 	# Generate metadata once (DRY)
 	local uuid; uuid="$(python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
@@ -453,56 +471,94 @@ _init_from() {
 		-)
 			# Read spec JSON from stdin
 			if [[ "$fmt" == "json" ]]; then
-				python3 -c "
+				python3 -c '
 import json, sys
+name, out = sys.argv[1], sys.argv[2]
 spec = json.load(sys.stdin)
-if '$name': spec['name'] = '$name'
-json.dump(spec, open('$out','w'), indent=2)
-" || die "Failed to parse stdin as JSON or write output"
+if name:
+	spec["name"] = name
+with open(out, "w") as fh:
+	json.dump(spec, fh, indent=2)
+	fh.write("\n")
+' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
 			elif [[ "$fmt" == "toml" ]]; then
-				python3 -c "
+				python3 -c '
 import json, sys
+name, out = sys.argv[1], sys.argv[2]
 spec = json.load(sys.stdin)
-if '$name': spec['name'] = '$name'
-lines = [k+' = '+json.dumps(v) for k,v in spec.items()]
-open('$out','w').write('\n'.join(lines)+'\n')
-" || die "Failed to parse stdin as JSON or write output"
+if name:
+	spec["name"] = name
+lines = [k+" = "+json.dumps(v) for k,v in spec.items()]
+open(out,"w").write("\n".join(lines)+"\n")
+' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
 			else
-				python3 -c "
-import json, sys, yaml
+				python3 -c '
+import json, sys
+name, out = sys.argv[1], sys.argv[2]
 spec = json.load(sys.stdin)
-if '$name': spec['name'] = '$name'
-open('$out','w').write(yaml.dump(spec, default_flow_style=False))
-" || die "Failed to parse stdin as JSON or write output"
+if name:
+	spec["name"] = name
+lines = []
+for k, v in spec.items():
+	if isinstance(v, str):
+		lines.append(f"{k}: {json.dumps(v)}")
+	elif isinstance(v, list) and all(isinstance(item, str) for item in v):
+		lines.append(f"{k}:")
+		for item in v:
+			lines.append(f"  - {json.dumps(item)}")
+	else:
+		lines.append(f"{k}: {json.dumps(v)}")
+open(out,"w").write("\n".join(lines)+"\n")
+' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
 			fi
 			;;
 		json:*)
 			local jf="${src#json:}"
 			[[ -f "$jf" ]] || die "JSON file not found: $jf"
+			is_safe_path "$jf" || exit 1
 			# Convert JSON input to target format
 			if [[ "$fmt" == "json" ]]; then cp "$jf" "$out"
 			elif [[ "$fmt" == "toml" ]]; then
-				python3 -c "
+				python3 - "$jf" "$out" <<'PY'
 import json
-d=json.load(open('$jf'))
+import sys
+jf, out = sys.argv[1], sys.argv[2]
+d=json.load(open(jf))
 lines=[k+' = '+json.dumps(v) for k,v in d.items()]
-open('$out','w').write('\n'.join(lines)+'\n')
-" 2>/dev/null || die "JSON import failed"
+open(out,'w').write('\n'.join(lines)+'\n')
+PY
+				[[ $? -eq 0 ]] || die "JSON import failed"
 			else
-				python3 -c "
-import json, yaml
-d=json.load(open('$jf'))
-open('$out','w').write(yaml.dump(d, default_flow_style=False))
-" 2>/dev/null || die "JSON import failed"
+				python3 - "$jf" "$out" <<'PY'
+import json
+import sys
+jf, out = sys.argv[1], sys.argv[2]
+d=json.load(open(jf))
+lines = []
+for k, v in d.items():
+	if isinstance(v, str):
+		lines.append(f"{k}: {json.dumps(v)}")
+	elif isinstance(v, list) and all(isinstance(item, str) for item in v):
+		lines.append(f"{k}:")
+		for item in v:
+			lines.append(f"  - {json.dumps(item)}")
+	else:
+		lines.append(f"{k}: {json.dumps(v)}")
+open(out,'w').write('\n'.join(lines)+'\n')
+PY
+				[[ $? -eq 0 ]] || die "JSON import failed"
 			fi
 			;;
 		template:*)
 			local tname="${src#template:}"
+			validate_template_name "$tname"
 			local tfile="specs/templates/${tname}.template.yml"
+			local project_template=true
 			[[ -f "$tfile" ]] || tfile="specs/templates/${tname}.template.json"
 			[[ -f "$tfile" ]] || tfile=".specs/templates/${tname}.template.yml"
 			[[ -f "$tfile" ]] || tfile=".specs/templates/${tname}.template.json"
 			if [[ ! -f "$tfile" ]] && is_home_template_allowed "$strict_template_source"; then
+				project_template=false
 				local home_template_dir="$HOME/.config/kujo-spec/templates"
 				tfile="$home_template_dir/${tname}.template.yml"
 				[[ -f "$tfile" ]] || tfile="$home_template_dir/${tname}.template.json"
@@ -513,11 +569,34 @@ open('$out','w').write(yaml.dump(d, default_flow_style=False))
 				fi
 				die "Template not found: $tname (looked for specs/templates/${tname}.template.yml and home templates)"
 			fi
+			if [[ "$project_template" == "true" ]]; then
+				is_safe_path "$tfile" || exit 1
+			fi
 			# Copy template and replace name if provided
 			if [[ -n "$name" ]]; then
-				"$0" convert "$tfile" --to json --output /dev/stdout 2>/dev/null | \
-					python3 -c "import json,sys; d=json.load(sys.stdin); d['name']='$name'; json.dump(d,open('$out','w'),indent=2)" 2>/dev/null || \
-					cp "$tfile" "$out"
+				local tmp_json tmp_named
+				tmp_json="$(mktemp -t spec_template_src_XXXXXX.json)"
+				tmp_named="$(mktemp -t spec_template_named_XXXXXX.json)"
+				spec_to_json "$tfile" "$tmp_json" || { rm -f "$tmp_json" "$tmp_named"; die "Template conversion failed"; }
+				python3 - "$tmp_json" "$tmp_named" "$name" <<'PY' || { rm -f "$tmp_json" "$tmp_named"; die "Template name replacement failed"; }
+import json
+import sys
+src, dst, name = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src) as fh:
+	d = json.load(fh)
+d["name"] = name
+with open(dst, "w") as fh:
+	json.dump(d, fh, indent=2)
+	fh.write("\n")
+PY
+				if [[ "$fmt" == "json" ]]; then
+					cp "$tmp_named" "$out"
+				elif [[ "$fmt" == "toml" ]]; then
+					run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp_named" --from json --to toml > "$out" 2>/dev/null || { rm -f "$tmp_json" "$tmp_named"; die "Template TOML conversion failed"; }
+				else
+					run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp_named" --from json --to yaml > "$out" 2>/dev/null || { rm -f "$tmp_json" "$tmp_named"; die "Template YAML conversion failed"; }
+				fi
+				rm -f "$tmp_json" "$tmp_named" 2>/dev/null
 			else
 				cp "$tfile" "$out"
 			fi
@@ -726,11 +805,42 @@ cmd_validate_all() {
 	local files; files="$(find "$dir" -maxdepth 5 -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
 	[[ -z "$files" ]] && die "No spec files found in $dir"
 	local passed=0 failed=0
+	local tmpdir; tmpdir="$(mktemp -d -t spec_validate_all_XXXXXX)"
+	trap "rm -rf $tmpdir" RETURN
+	local json_files=()
+	local idx=0
 	while IFS= read -r f; do
 		[[ -z "$f" ]] && continue
-		if validate_file_quiet "$f" false; then passed=$((passed+1)); else failed=$((failed+1)); fi
+		if [[ ! -f "$f" ]] || ! is_safe_path "$f"; then
+			failed=$((failed+1))
+			continue
+		fi
+		case "$f" in
+			*.json)
+				json_files+=("$f")
+				;;
+			*)
+				local jf="$tmpdir/$(printf '%04d' "$idx").json"
+				if spec_to_json "$f" "$jf" 2>/dev/null; then
+					json_files+=("$jf")
+				else
+					failed=$((failed+1))
+				fi
+				idx=$((idx + 1))
+				;;
+		esac
 	done <<< "$files"
+	if [[ "${#json_files[@]}" -gt 0 ]]; then
+		local batch batch_passed batch_failed
+		batch="$(python3 "$HELPER" validate-many false "${json_files[@]}" 2>/dev/null)" || true
+		IFS='|' read -r batch_passed batch_failed <<< "$batch"
+		[[ "$batch_passed" =~ ^[0-9]+$ ]] || batch_passed=0
+		[[ "$batch_failed" =~ ^[0-9]+$ ]] || batch_failed="${#json_files[@]}"
+		passed=$((passed + batch_passed))
+		failed=$((failed + batch_failed))
+	fi
 	echo "validate --all: $passed passed, $failed failed, $((passed+failed)) total"
+	rm -rf "$tmpdir" 2>/dev/null || true
 	return $failed
 }
 
@@ -759,7 +869,7 @@ cmd_search() {
 		local match=true
 		[[ -n "$tag" ]] && [[ ! " $tags " =~ " $tag " ]] && match=false
 		[[ -n "$pri" ]] && [[ "$pri2" != "$pri" ]] && match=false
-		[[ -n "$query" ]] && { echo "$name $tags" | grep -qi "$query" || match=false; }
+		[[ -n "$query" ]] && { printf '%s\n' "$name $tags" | grep -Fqi -- "$query" || match=false; }
 
 		if $match; then
 			printf "%-50s %-12s %s\n" "$f" "$pri2" "$name"

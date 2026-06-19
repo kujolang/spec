@@ -52,6 +52,24 @@ check "init accepts name with hyphens" bash -c "
 	grep -q 'my-feature-name' '$TMPDIR/safe.yml'
 "
 
+# 4d. SEC-11: init --from applies the same name sanitizer as normal init
+check_fail "init --from rejects dangerous name with quotes" bash -c "
+	printf '{\"name\":\"safe\",\"goal\":\"valid goal\"}' | '$SPEC' init --from - --name 'bad\"name' --output '${PROJECT_DIR}/_test_from_bad_name.yml' >/dev/null 2>&1
+	rc=\$?
+	rm -f '${PROJECT_DIR}/_test_from_bad_name.yml'
+	exit \$rc
+"
+
+# 4e. SEC-11: json import sources outside the project are rejected
+check_fail "init --from json rejects outside-project source" bash -c "
+	src='$TMPDIR/outside-source.json'
+	printf '{\"name\":\"safe\",\"goal\":\"valid goal\"}' > \"\$src\"
+	'$SPEC' init --from json:\"\$src\" --output '${PROJECT_DIR}/_test_outside_import.yml' >/dev/null 2>&1
+	rc=\$?
+	rm -f '${PROJECT_DIR}/_test_outside_import.yml'
+	exit \$rc
+"
+
 # 5. Validate valid spec
 check "validate passes on valid JSON spec" "$SPEC" validate "$PROJECT_DIR/fixtures/valid_minimal.json"
 
@@ -136,6 +154,13 @@ check "spec export envelope with dispatch payload is machine-readable" bash -c "
 	[[ \$rc -eq 0 ]]
 "
 
+# 15c. SEC-12: dispatch JSON escapes quoted spec content
+check "export dispatch escapes quoted content" bash -c "
+	out=\"\$('$SPEC' export-agent-context '${PROJECT_DIR}/fixtures/valid_quoted.json' --format dispatch 2>&1)\"; rc=\$?
+	echo \"\$out\" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d['\''name'\''].startswith('\''Quote '\''); assert chr(34) in d['\''name'\'']; assert '\''quotes'\'' in d['\''goal'\'']'
+	[[ \$rc -eq 0 ]]
+"
+
 # 16. Nonexistent file
 check_fail "validate fails on nonexistent file" "$SPEC" validate "$TMPDIR/nonexistent.yml"
 
@@ -189,6 +214,18 @@ check "spec ci accepts option-first argument order" bash -c "
 	out=\"\$('$SPEC' ci --format json '$PROJECT_DIR/examples' 2>&1)\"; rc=\$?
 	echo \"\$out\" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["failed"] == 0; assert d["total"] >= 1'
 	[[ \$rc -eq 0 ]]
+"
+
+# 19c-1a. SEC-12: ci JSON escapes failure file paths
+check "spec ci json escapes unusual failure paths" bash -c "
+	ci_dir='${PROJECT_DIR}/_test_ci_json_escape'
+	rm -rf \"\$ci_dir\"
+	mkdir -p \"\$ci_dir\"
+	printf '{\"name\":\"bad\"}' > \"\$ci_dir/bad\\\"name.spec.json\"
+	out=\"\$('$SPEC' ci \"\$ci_dir\" --format json 2>&1)\"; rc=\$?
+	rm -rf \"\$ci_dir\"
+	echo \"\$out\" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["failed"] == 1; assert any("bad\\\"name.spec.json" in f for f in d["failures"])'
+	[[ \$rc -ne 0 ]]
 "
 
 # 19c-2. PERF-03: ci supports --max-files truncation
@@ -292,6 +329,25 @@ check "spec template list prints normalized names" bash -c "
 	! echo \"\$out\" | grep -q 'smoke-template.template'
 	rc=\$?
 	rm -rf \"\$home_dir\"
+	exit \$rc
+"
+
+# 19i-1a. SEC-11: template names cannot traverse directories
+check_fail "spec template create rejects traversal names" bash -c "
+	home_dir='${PROJECT_DIR}/_test_template_traversal_home'
+	rm -rf \"\$home_dir\"
+	mkdir -p \"\$home_dir\"
+	HOME=\"\$home_dir\" '$SPEC' template create '${PROJECT_DIR}/fixtures/valid_minimal.yml' '../escape' >/dev/null 2>&1
+	rc=\$?
+	rm -rf \"\$home_dir\"
+	exit \$rc
+"
+
+# 19i-1b. SEC-11: init template names cannot traverse directories
+check_fail "spec init rejects traversal template name" bash -c "
+	'$SPEC' init --from template:../valid_minimal --output '${PROJECT_DIR}/_test_template_traversal.yml' >/dev/null 2>&1
+	rc=\$?
+	rm -f '${PROJECT_DIR}/_test_template_traversal.yml'
 	exit \$rc
 "
 

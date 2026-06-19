@@ -82,8 +82,13 @@ export func export_dispatch(spec) {
 	pri := dict_get(spec, "priority", "medium")
 	ac := dict_get_arr(spec, "acceptance_criteria")
 	dp := dict_get_arr(spec, "dependencies")
-	result := "{\"name\": \"" + name + "\", \"goal\": \"" + goal + "\", \"priority\": \"" + pri + "\", \"ac_count\": " + to_string(len(ac)) + ", \"dep_count\": " + to_string(len(dp)) + "}"
-	return result
+	return to_json({
+		"name": name,
+		"goal": goal,
+		"priority": pri,
+		"ac_count": len(ac),
+		"dep_count": len(dp)
+	})
 }
 
 func main() {

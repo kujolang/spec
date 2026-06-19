@@ -158,19 +158,23 @@ spec_cmd_ci() {
 
 	case "$format" in
 		json)
-			if [[ "$failed" -eq 0 ]]; then
-				echo "{\"total\": $total, \"passed\": $passed, \"failed\": $failed, \"failures\": [], \"truncated\": $truncated_json}"
-			else
-				echo "{\"total\": $total, \"passed\": $passed, \"failed\": $failed, \"failures\": ["
-				local first=true
-				for ff in "${failures[@]}"; do
-					$first || echo ","
-					echo -n "    \"$ff\""
-					first=false
-				done
-				echo ""
-				echo "], \"truncated\": $truncated_json}"
-			fi
+			python3 - "$total" "$passed" "$failed" "$truncated_json" "${failures[@]+"${failures[@]}"}" <<'PY'
+import json
+import sys
+
+total = int(sys.argv[1])
+passed = int(sys.argv[2])
+failed = int(sys.argv[3])
+truncated = sys.argv[4] == "true"
+failures = sys.argv[5:]
+print(json.dumps({
+	"total": total,
+	"passed": passed,
+	"failed": failed,
+	"failures": failures,
+	"truncated": truncated,
+}, indent=2))
+PY
 			;;
 		github)
 			if [[ "$failed" -gt 0 ]]; then
@@ -245,6 +249,8 @@ spec_cmd_template() {
 			local src="${1:-}" name="${2:-}"
 			[[ -z "$src" || -z "$name" ]] && die "Usage: spec template create <spec-file> <template-name>"
 			[[ -f "$src" ]] || die "Source spec not found: $src"
+			is_safe_path "$src" || return 1
+			validate_template_name "$name"
 			mkdir -p "$user_template_dir" 2>/dev/null || true
 			cp "$src" "$user_template_dir/${name}.template.yml"
 			echo "Template created: $user_template_dir/${name}.template.yml"
@@ -252,6 +258,7 @@ spec_cmd_template() {
 		delete)
 			local name="${1:-}"
 			[[ -z "$name" ]] && die "Usage: spec template delete <template-name>"
+			validate_template_name "$name"
 			local tfile="$user_template_dir/${name}.template.yml"
 			[[ -f "$tfile" ]] || tfile="$user_template_dir/${name}.template.json"
 			[[ -f "$tfile" ]] || die "Template not found: $name"

@@ -13,6 +13,25 @@ eliminating command injection risk from spec file paths.
 import json
 import sys
 
+KNOWN_CHECK_TYPES = {
+    "command_succeeds", "command_output_contains", "file_exists",
+    "file_contains", "file_line_count", "json_path_value",
+    "snapshot_matches", "directory_contains_files", "regex_matches",
+    "command_timing_less_than", "env_var_set", "http_status",
+    "http_body_contains", "markdown_contains_section", "exit_code",
+    "stdout_contains", "stderr_empty", "artifact_exists",
+}
+
+VALID_PRIORITIES = {"critical", "high", "medium", "low"}
+VALID_SEVERITIES = {"low", "medium", "high", "critical"}
+KNOWN_TOP_LEVEL_FIELDS = {
+    "name", "goal", "id", "status", "version", "created_at",
+    "background", "scope", "non_goals", "relevant_systems", "likely_files",
+    "acceptance_criteria", "eval_requirements", "risks", "dependencies",
+    "review_expectations", "human_approval_points", "estimated_effort",
+    "priority", "assignee", "tags", "parent_id",
+}
+
 
 def fail(msg):
     print(msg, file=sys.stderr)
@@ -101,6 +120,114 @@ def list_specs(filepaths, json_out=False):
             print("|".join(row))
 
 
+def validate_quiet(filepath, strict=False):
+    """Fast batch validator matching the runtime validator's pass/fail rules."""
+    try:
+        with open(filepath) as fh:
+            spec = json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 1
+
+    if not isinstance(spec, dict):
+        return 1
+
+    errors = []
+    warnings = []
+
+    name = spec.get("name", "")
+    if not isinstance(name, str) or name == "":
+        errors.append("Missing required field: name")
+    elif len(name) > 200:
+        errors.append("Field name exceeds 200 characters")
+
+    goal = spec.get("goal", "")
+    if not isinstance(goal, str) or goal == "":
+        errors.append("Missing required field: goal")
+    elif len(goal) > 5000:
+        errors.append("Field goal exceeds 5000 characters")
+
+    for key in ("version", "background", "scope", "estimated_effort", "assignee"):
+        if key in spec and not isinstance(spec[key], str):
+            errors.append(f"Field {key} must be a string, got non-string value")
+
+    max_items = {
+        "non_goals": 200,
+        "relevant_systems": 50,
+        "likely_files": 200,
+        "acceptance_criteria": 100,
+        "dependencies": 100,
+        "review_expectations": 50,
+        "human_approval_points": 50,
+        "tags": 50,
+    }
+    for key, limit in max_items.items():
+        if key not in spec:
+            continue
+        value = spec[key]
+        if not isinstance(value, list):
+            errors.append(f"Field {key} must be an array")
+            continue
+        if len(value) > limit:
+            errors.append(f"Field {key} exceeds maximum of {limit} items")
+
+    eval_requirements = spec.get("eval_requirements", [])
+    if "eval_requirements" in spec:
+        if not isinstance(eval_requirements, list):
+            errors.append("Field eval_requirements must be an array")
+        else:
+            if len(eval_requirements) > 200:
+                errors.append("Field eval_requirements exceeds 200 items")
+            for idx, er in enumerate(eval_requirements):
+                if not isinstance(er, dict):
+                    errors.append(f"eval_requirements[{idx}] must be an object")
+                    continue
+                if "description" not in er:
+                    errors.append(f"eval_requirements[{idx}] missing description")
+                check_type = er.get("check_type", "")
+                if check_type and check_type not in KNOWN_CHECK_TYPES:
+                    warnings.append(f"Unknown check_type: {check_type}")
+
+    risks = spec.get("risks", [])
+    if "risks" in spec:
+        if not isinstance(risks, list):
+            errors.append("Field risks must be an array")
+        else:
+            if len(risks) > 100:
+                errors.append("Field risks exceeds 100 items")
+            for idx, risk in enumerate(risks):
+                if not isinstance(risk, dict):
+                    continue
+                if "risk" not in risk:
+                    errors.append(f"risks[{idx}] missing risk field")
+                severity = risk.get("severity")
+                if severity is not None and severity not in VALID_SEVERITIES:
+                    warnings.append(f"Invalid severity: {severity}")
+
+    priority = spec.get("priority", "medium")
+    if priority not in VALID_PRIORITIES:
+        errors.append(f"Invalid priority: {priority} (use critical/high/medium/low)")
+
+    for key in spec:
+        if key not in KNOWN_TOP_LEVEL_FIELDS:
+            warnings.append(f"Unknown top-level field: {key}")
+
+    if errors or (strict and warnings):
+        return 1
+    return 0
+
+
+def validate_many(strict, filepaths):
+    passed = 0
+    failed = 0
+    for filepath in filepaths:
+        if validate_quiet(filepath, strict) == 0:
+            passed += 1
+        else:
+            failed += 1
+    print(f"{passed}|{failed}")
+    return 0 if failed == 0 else 1
+
+
 def main():
     if len(sys.argv) < 2:
         fail("Usage: spec_helpers.py <command> [args...]")
@@ -138,6 +265,18 @@ def main():
         if not args:
             fail("Usage: spec_helpers.py list [--json] <file1> <file2> ...")
         list_specs(args, json_out)
+
+    elif cmd == "validate-quiet":
+        if len(sys.argv) < 3:
+            fail("Usage: spec_helpers.py validate-quiet <json-file> [strict=true|false]")
+        strict = len(sys.argv) > 3 and sys.argv[3].lower() == "true"
+        sys.exit(validate_quiet(sys.argv[2], strict))
+
+    elif cmd == "validate-many":
+        if len(sys.argv) < 4:
+            fail("Usage: spec_helpers.py validate-many <strict=true|false> <json-file> [...]")
+        strict = sys.argv[2].lower() == "true"
+        sys.exit(validate_many(strict, sys.argv[3:]))
 
     else:
         fail(f"Unknown command: {cmd}")
