@@ -1,10 +1,8 @@
 # Spec
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/kujolang/spec)
-[![Contract](https://img.shields.io/badge/contract-v0.1.0-green)](https://github.com/kujolang/spec)
+[![Version](https://img.shields.io/badge/version-1.0.0-black)](https://github.com/kujolang/spec)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
-
-> **v0.1.0** | Contract v0.1.0 | JSON Schema | CLI tool | YAML/TOML/JSON support | Agent context export | Generated command inventory
+[![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 
 **Spec** defines task contracts, acceptance criteria, expected outputs, and agent-readable work instructions for AI-native development.
 
