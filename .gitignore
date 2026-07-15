@@ -12,3 +12,4 @@ __pycache__/
 tests/contract_tests.out
 tests/security_tests.out
 tests/integration_tests.out
+.loop-engineering/
