@@ -14,7 +14,7 @@ echo "=== Runtime Parity Check ==="
 
 check "validate module" bash -c "
 	out=\"\$('$KUJO_BIN' run src/validate.kujo --json fixtures/valid_minimal.json 2>&1)\"
-	echo \"\$out\" | python3 -c \"import sys,json; d=json.load(sys.stdin); assert d['valid']==True\"
+	echo \"\$out\" | python3 -c \"import sys,json; lines=[line for line in sys.stdin.read().splitlines() if line.strip().startswith('{')]; d=json.loads(lines[-1]); assert d['valid']==True\"
 "
 
 check "render module" bash -c "
