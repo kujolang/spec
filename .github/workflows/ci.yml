@@ -19,7 +19,7 @@ jobs:
             bench_baseline: "90"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Set up Kujo runtime
         run: |
           echo "KUJO_BIN=kujo" >> $GITHUB_ENV
