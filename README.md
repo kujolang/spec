@@ -10,9 +10,9 @@ A `.spec.yml` file turns human instructions into a clear, reviewable task contra
 
 Prioritize copyable examples over tests: examples should model the most token-efficient idioms we want agents to imitate.
 
-## Production Readiness
+## Launch Readiness
 
-Spec is built for production use in local development, CI, monorepos, and regulated automation environments. It includes path-boundary checks, symlink escape protection, safe-write controls, strict validation mode, generated command inventory checks, completion parity checks, fuzz coverage, benchmark gates, and release quality gates.
+Spec is release-candidate oriented for local development, CI, monorepos, and regulated automation environments where the verification suite is run against the target runtime and trust boundaries. It includes path-boundary checks, symlink escape protection, safe-write controls, strict validation mode, generated command inventory checks, completion parity checks, fuzz coverage, benchmark gates, and release quality gates.
 
 No CLI can be universally production-ready without being validated against the target organization's runtime, CI runner, trust boundaries, and release process. For enterprise adoption, run the verification suite in your environment, pin `KUJO_BIN`, enable `SPEC_SAFE_WRITE=on`, and set `SPEC_TEMPLATE_SOURCE_POLICY=project-only` in CI.
 
