@@ -104,7 +104,7 @@ spec_to_json() {
 	local fsize cur_mtime cur_hash cur_sig cached_sig f_key
 
 	# Security: reject files larger than 1MB before parsing
-	fsize="$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)"
+	fsize="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || echo 0)"
 	if [[ "$fsize" -gt 1048576 ]]; then
 		die "File too large: $f ($fsize bytes). Maximum size is 1MB."
 	fi
@@ -115,7 +115,7 @@ spec_to_json() {
 	chmod 700 "$cache_dir" 2>/dev/null || true
 	f_key="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null || printf '%s' "$f")"
 	local cache_key; cache_key="$(printf '%s' "$f_key" | shasum -a 256 2>/dev/null | cut -d' ' -f1)" || cache_key=""
-	cur_mtime="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+	cur_mtime="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)"
 	cur_hash="$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1)" || cur_hash=""
 	cur_sig="$cur_mtime:$fsize:$cur_hash"
 	if [[ -n "$cache_key" ]]; then
@@ -160,7 +160,7 @@ validate_file_quiet() {
 	case "$f" in
 	*.json)
 		local fsize
-		fsize="$(stat -f %z "$f" 2>/dev/null || stat -c %s "$f" 2>/dev/null || echo 0)"
+		fsize="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || echo 0)"
 		[[ "$fsize" -le 1048576 ]] || return 1
 		python3 "$HELPER" validate-quiet "$f" "$strict" >/dev/null 2>&1
 		return $?
