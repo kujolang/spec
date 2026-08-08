@@ -1,6 +1,6 @@
 [package]
 name = "spec"
-version = "0.1.0"
+version = "1.0.0"
 description = "Structured task definition format for AI-native development — turns messy human instructions into clear machine-readable implementation context."
 license = "MIT"
 authors = ["Kujolang <contact@kujolang.ai>"]
@@ -12,10 +12,10 @@ categories = ["ai", "developer-tools"]
 readme = "README.md"
 
 [package.status]
-stage = "experimental"
-stability = "early"
+stage = "production"
+stability = "stable"
 public_api = true
-notes = "Schema and CLI are usable now, but spec format ergonomics may evolve."
+notes = "Stable task-contract schema and CLI for local development, CI, monorepos, and policy-constrained automation."
 
 [kujo]
 minimum_version = "0.1.0"

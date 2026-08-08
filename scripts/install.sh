@@ -3,7 +3,7 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/kujolang/spec/main/scripts/install.sh | bash
 set -euo pipefail
 
-SPEC_VERSION="${SPEC_VERSION:-0.1.0}"
+SPEC_VERSION="${SPEC_VERSION:-1.0.0}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 REPO_URL="https://github.com/kujolang/spec"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

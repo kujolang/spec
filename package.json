@@ -1,6 +1,6 @@
 {
   "name": "kujo-spec",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Structured task definition format for AI-native development",
   "homepage": "https://github.com/kujolang/spec",
   "repository": {
