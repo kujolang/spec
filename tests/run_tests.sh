@@ -390,17 +390,21 @@ check "validate passes on valid YAML spec" "$SPEC" validate "$PROJECT_DIR/fixtur
 # 22. TEST-01: TOML spec validation
 check "validate passes on valid TOML spec" "$SPEC" validate "$PROJECT_DIR/fixtures/valid_minimal.toml"
 
-# 23. TEST-02: edge case — empty file handled without crash
-check "validate handles empty file gracefully" bash -c "
-	touch '$TMPDIR/empty.yml'
-	'$SPEC' validate '$TMPDIR/empty.yml' >/dev/null 2>&1
-	# Exit code doesn't matter — just verify it doesn't crash/hang
-	true
+# 23. TEST-02: edge case — empty file returns a deterministic validation error
+check "validate rejects an empty file with required-field errors" bash -c "
+	empty_file='${PROJECT_DIR}/_test_empty.yml'
+	: > \"\$empty_file\"
+	out=\$(timeout 10 '$SPEC' validate \"\$empty_file\" 2>&1); rc=\$?
+	rm -f \"\$empty_file\"
+	[[ \$rc -eq 1 ]] &&
+	echo \"\$out\" | grep -q 'Missing required field: name' &&
+	echo \"\$out\" | grep -q 'Missing required field: goal'
 "
-# 24. SCHEMA-01: init generates UUID id
-check "init generates UUID id" bash -c "
+# 24. SCHEMA-01: init generates a UUID v4 id
+check "init generates a UUID v4 id" bash -c "
 	'$SPEC' init --name test --output '$TMPDIR/with_id.yml' >/dev/null 2>&1
-	grep -q 'id:' '$TMPDIR/with_id.yml'
+	id=\$(sed -n 's/^id: \"\\([^\"]*\\)\"/\\1/p' '$TMPDIR/with_id.yml')
+	echo \"\$id\" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 "
 
 # 25. FEAT-02: spec search by priority
@@ -459,11 +463,25 @@ check "spec convert YAML to JSON" bash -c "
 	'$SPEC' convert '$PROJECT_DIR/fixtures/valid_minimal.yml' --to json --output '$TMPDIR/conv.json' >/dev/null 2>&1
 	python3 -c 'import json; json.load(open(\"$TMPDIR/conv.json\"))'
 "
-# 28. FEAT-05: spec diff runs without error
-check "spec diff runs without error" bash -c "'$SPEC' diff '$PROJECT_DIR/fixtures/valid_minimal.json' '$PROJECT_DIR/fixtures/valid_minimal.yml' > /dev/null 2>&1"
+# 28. FEAT-05: spec diff reports the semantic fields that changed
+check "spec diff reports changed fields" bash -c "
+	out=\$('$SPEC' diff '$PROJECT_DIR/fixtures/valid_minimal.json' '$PROJECT_DIR/fixtures/valid_minimal.yml' 2>&1); rc=\$?
+	[[ \$rc -eq 0 ]] &&
+	echo \"\$out\" | grep -q '^  goal:' &&
+	echo \"\$out\" | grep -q '^  name:' &&
+	echo \"\$out\" | grep -q '^  priority:'
+"
 
-# 29. KENNEL-04: spec export-eval creates valid eval suite
-check "spec export-eval creates valid JSON" bash -c "'$SPEC' export-eval '$PROJECT_DIR/fixtures/valid_minimal.json' --output '$TMPDIR/eval_out.json' >/dev/null 2>&1 && python3 -c 'import json; json.load(open(\"$TMPDIR/eval_out.json\"))'"
+# 29. KENNEL-04: spec export-eval preserves the Eval suite contract
+check "spec export-eval maps eval requirements into checks" bash -c "
+	cat > '${PROJECT_DIR}/_test_export_eval.json' << 'INNEREOF'
+{\"name\":\"Release gate\",\"goal\":\"Protect the release contract.\",\"eval_requirements\":[{\"description\":\"tests pass\",\"check_type\":\"command_succeeds\",\"params\":{\"command\":\"make test\"}}]}
+INNEREOF
+	'$SPEC' export-eval '${PROJECT_DIR}/_test_export_eval.json' --output '$TMPDIR/eval_out.json' >/dev/null 2>&1
+	rc=\$?
+	rm -f '${PROJECT_DIR}/_test_export_eval.json'
+	[[ \$rc -eq 0 ]] && python3 -c 'import json; d=json.load(open(\"$TMPDIR/eval_out.json\")); assert d == {\"name\":\"Release gate\",\"description\":\"Protect the release contract.\",\"tests\":[{\"name\":\"tests pass\",\"check\":\"command_succeeds\",\"params\":{\"command\":\"make test\"}}]}'
+"
 
 # 30. SCHEMA-02: parent_id field accepted in spec
 check "spec with parent_id field validates" bash -c "cd '$PROJECT_DIR' && echo '{\"name\":\"c\",\"goal\":\"g\",\"parent_id\":\"abc\"}' > fixtures/_test_parent.json && '$SPEC' validate fixtures/_test_parent.json >/dev/null 2>&1; rm -f fixtures/_test_parent.json"
