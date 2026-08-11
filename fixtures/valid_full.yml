@@ -17,8 +17,10 @@ acceptance_criteria:
   - "Criterion 1"
   - "Criterion 2"
 risks:
-  - "Risk one"
-  - "Risk two"
+  - risk: "Risk one"
+    severity: "medium"
+  - risk: "Risk two"
+    severity: "high"
 dependencies:
   - "dep-one"
   - "dep-two"

@@ -520,6 +520,95 @@ check "schema is valid JSON Schema" bash -c "
 python3 -c 'import json; s=json.load(open(\"$PROJECT_DIR/schema/spec.schema.json\")); assert s.get(\"type\")==\"object\"; assert \"name\" in s.get(\"required\",[]); assert \"goal\" in s.get(\"required\",[])'
 "
 
+# 33a. Schema-supported lifecycle/tooling fields must not become strict-mode warnings.
+check "validate --strict accepts all documented top-level schema fields" bash -c "
+cat > '${PROJECT_DIR}/_test_schema_fields.json' << 'INNEREOF'
+{"name":"schema fields","goal":"exercise documented fields","updated_at":"2026-08-11T12:00:00Z","completed_at":"2026-08-11T13:00:00Z","estimated_hours":2.5,"children":["child-id"],"metadata":{"owner":"platform"}}
+INNEREOF
+'$SPEC' validate '${PROJECT_DIR}/_test_schema_fields.json' --strict --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_schema_fields.json'
+exit \$rc
+"
+
+# 33b. Schema lifecycle status enum is enforced.
+check_fail "validate rejects invalid lifecycle status" bash -c "
+printf '%s\n' '{"name":"bad status","goal":"reject it","status":"shipping"}' > '${PROJECT_DIR}/_test_bad_status.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_status.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_status.json'
+exit \$rc
+"
+
+# 33c. Schema UUID v4 pattern is enforced.
+check_fail "validate rejects malformed spec id" bash -c "
+printf '%s\n' '{"name":"bad id","goal":"reject it","id":"not-a-uuid"}' > '${PROJECT_DIR}/_test_bad_id.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_id.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_id.json'
+exit \$rc
+"
+
+# 33d. Numeric schema fields reject strings.
+check_fail "validate rejects non-numeric estimated_hours" bash -c "
+printf '%s\n' '{"name":"bad hours","goal":"reject it","estimated_hours":"two"}' > '${PROJECT_DIR}/_test_bad_hours.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_hours.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_hours.json'
+exit \$rc
+"
+
+# 33e. Runtime validation matches the schema's non_goals item limit.
+check_fail "validate rejects more than 100 non-goals" bash -c "
+python3 -c 'import json; json.dump({"name":"too many","goal":"reject it","non_goals":["x"]*101}, open("${PROJECT_DIR}/_test_many_non_goals.json","w"))'
+'$SPEC' validate '${PROJECT_DIR}/_test_many_non_goals.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_many_non_goals.json'
+exit \$rc
+"
+
+# 33f. Arrays declared as string arrays reject non-string elements.
+check_fail "validate rejects non-string array items" bash -c "
+printf '%s\n' '{"name":"bad tags","goal":"reject it","tags":[7]}' > '${PROJECT_DIR}/_test_bad_tags.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_tags.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_tags.json'
+exit \$rc
+"
+
+# 33g. Structured dependencies enforce their object contract.
+check_fail "validate rejects malformed structured dependencies" bash -c "
+printf '%s\n' '{"name":"bad dep","goal":"reject it","dependencies":[{"type":"unknown"}]}' > '${PROJECT_DIR}/_test_bad_dependency.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_dependency.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_dependency.json'
+exit \$rc
+"
+
+# 33h. Risk entries must be objects, not arbitrary scalars.
+check_fail "validate rejects non-object risks" bash -c "
+printf '%s\n' '{"name":"bad risk","goal":"reject it","risks":["oops"]}' > '${PROJECT_DIR}/_test_bad_risk.json'
+'$SPEC' validate '${PROJECT_DIR}/_test_bad_risk.json' --quiet
+rc=\$?
+rm -f '${PROJECT_DIR}/_test_bad_risk.json'
+exit \$rc
+"
+
+# 33i. Convert must reject formats it cannot produce.
+check_fail "convert rejects unsupported target format" "$SPEC" convert "$PROJECT_DIR/fixtures/valid_minimal.json" --to xml --output "$TMPDIR/invalid.xml"
+
+# 33j. Template imports honor the requested output format without requiring --name.
+check "init template converts to requested format without name override" bash -c "
+template_dir='${PROJECT_DIR}/specs/templates'
+mkdir -p \"\$template_dir\"
+cp '${PROJECT_DIR}/fixtures/valid_minimal.json' \"\$template_dir/_test_format.template.json\"
+'$SPEC' init --from template:_test_format --format toml --output '${PROJECT_DIR}/_test_template_format.toml' >/dev/null 2>&1
+rc=\$?
+grep -q '^name = ' '${PROJECT_DIR}/_test_template_format.toml' || rc=1
+rm -f \"\$template_dir/_test_format.template.json\" '${PROJECT_DIR}/_test_template_format.toml'
+exit \$rc
+"
+
 # 34. DX-03: validate --strict treats warnings as errors
 check_fail "validate --strict fails on warnings" bash -c "
 cat > '$TMPDIR/warn.json' << 'INNEREOF'

@@ -28,8 +28,10 @@ acceptance_criteria:
   - "spec export-agent-context produces structured agent prompt"
   - "All test suites pass with exit code 0"
 risks:
-  - "YAML parser may not handle all edge cases"
-  - "Schema evolution could break existing spec files"
+  - risk: "YAML parser may not handle all edge cases"
+    severity: "medium"
+  - risk: "Schema evolution could break existing spec files"
+    severity: "high"
 dependencies:
   - "kujo-eval for eval requirement integration"
   - "Kujo runtime v0.1.0+"

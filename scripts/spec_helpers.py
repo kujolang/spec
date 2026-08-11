@@ -24,8 +24,10 @@ KNOWN_CHECK_TYPES = {
 
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
+VALID_STATUSES = {"draft", "ready", "in-progress", "review", "completed", "archived"}
 KNOWN_TOP_LEVEL_FIELDS = {
     "name", "goal", "id", "status", "version", "created_at",
+    "updated_at", "completed_at", "estimated_hours", "children", "metadata",
     "background", "scope", "non_goals", "relevant_systems", "likely_files",
     "acceptance_criteria", "eval_requirements", "risks", "dependencies",
     "review_expectations", "human_approval_points", "estimated_effort",
@@ -146,19 +148,20 @@ def validate_quiet(filepath, strict=False):
     elif len(goal) > 5000:
         errors.append("Field goal exceeds 5000 characters")
 
-    for key in ("version", "background", "scope", "estimated_effort", "assignee"):
+    for key in ("version", "id", "status", "created_at", "updated_at", "completed_at",
+                "background", "scope", "estimated_effort", "assignee"):
         if key in spec and not isinstance(spec[key], str):
             errors.append(f"Field {key} must be a string, got non-string value")
 
     max_items = {
-        "non_goals": 200,
+        "non_goals": 100,
         "relevant_systems": 50,
         "likely_files": 200,
         "acceptance_criteria": 100,
-        "dependencies": 100,
         "review_expectations": 50,
         "human_approval_points": 50,
         "tags": 50,
+        "children": 200,
     }
     for key, limit in max_items.items():
         if key not in spec:
@@ -169,6 +172,42 @@ def validate_quiet(filepath, strict=False):
             continue
         if len(value) > limit:
             errors.append(f"Field {key} exceeds maximum of {limit} items")
+        for idx, item in enumerate(value):
+            if not isinstance(item, str):
+                errors.append(f"Field {key}[{idx}] must be a string")
+
+    status = spec.get("status")
+    if isinstance(status, str) and status not in VALID_STATUSES:
+        errors.append("Invalid status: " + status + " (use draft/ready/in-progress/review/completed/archived)")
+
+    spec_id = spec.get("id")
+    if isinstance(spec_id, str):
+        import re
+        if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", spec_id) is None:
+            errors.append("Field id must be a UUID v4")
+
+    if "estimated_hours" in spec and (isinstance(spec["estimated_hours"], bool) or not isinstance(spec["estimated_hours"], (int, float))):
+        errors.append("Field estimated_hours must be a number")
+    if "metadata" in spec and not isinstance(spec["metadata"], dict):
+        errors.append("Field metadata must be an object")
+
+    dependencies = spec.get("dependencies", [])
+    if "dependencies" in spec:
+        if not isinstance(dependencies, list):
+            errors.append("Field dependencies must be an array")
+        else:
+            if len(dependencies) > 100:
+                errors.append("Field dependencies exceeds maximum of 100 items")
+            for idx, dep in enumerate(dependencies):
+                if isinstance(dep, dict):
+                    if not isinstance(dep.get("description"), str):
+                        errors.append(f"dependencies[{idx}] must have a string description")
+                    if "type" in dep and dep["type"] not in {"blocks", "blocked_by"}:
+                        errors.append(f"dependencies[{idx}].type must be blocks or blocked_by")
+                    if "spec_id" in dep and not isinstance(dep["spec_id"], str):
+                        errors.append(f"dependencies[{idx}].spec_id must be a string")
+                elif not isinstance(dep, str):
+                    errors.append(f"dependencies[{idx}] must be a string or object")
 
     eval_requirements = spec.get("eval_requirements", [])
     if "eval_requirements" in spec:
@@ -196,11 +235,18 @@ def validate_quiet(filepath, strict=False):
                 errors.append("Field risks exceeds 100 items")
             for idx, risk in enumerate(risks):
                 if not isinstance(risk, dict):
+                    errors.append(f"risks[{idx}] must be an object")
                     continue
                 if "risk" not in risk:
                     errors.append(f"risks[{idx}] missing risk field")
+                elif not isinstance(risk["risk"], str):
+                    errors.append(f"risks[{idx}].risk must be a string")
+                if "mitigation" in risk and not isinstance(risk["mitigation"], str):
+                    errors.append(f"risks[{idx}].mitigation must be a string")
                 severity = risk.get("severity")
-                if severity is not None and severity not in VALID_SEVERITIES:
+                if severity is not None and not isinstance(severity, str):
+                    errors.append(f"risks[{idx}].severity must be a string")
+                elif severity is not None and severity not in VALID_SEVERITIES:
                     warnings.append(f"Invalid severity: {severity}")
 
     priority = spec.get("priority", "medium")

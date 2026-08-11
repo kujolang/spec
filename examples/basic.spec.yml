@@ -23,8 +23,10 @@ acceptance_criteria:
   - "Uploads larger than 5MB return 413"
   - "All endpoints pass input validation and sanitization"
 risks:
-  - "Large file uploads could exhaust disk space"
-  - "Malicious file uploads could bypass type detection"
+  - risk: "Large file uploads could exhaust disk space"
+    severity: "high"
+  - risk: "Malicious file uploads could bypass type detection"
+    severity: "critical"
 dependencies:
   - "User authentication system"
   - "File storage service"
