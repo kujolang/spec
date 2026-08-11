@@ -185,6 +185,7 @@ import sys
 
 allowed = {
 	"name", "goal", "id", "status", "version", "created_at",
+	"updated_at", "completed_at", "estimated_hours", "children", "metadata",
 	"background", "scope", "non_goals", "relevant_systems", "likely_files",
 	"acceptance_criteria", "eval_requirements", "risks", "dependencies",
 	"review_expectations", "human_approval_points", "estimated_effort",
@@ -598,7 +599,23 @@ PY
 				fi
 				rm -f "$tmp_json" "$tmp_named" 2>/dev/null
 			else
-				cp "$tfile" "$out"
+				local source_fmt="yaml"
+				[[ "$tfile" == *.json ]] && source_fmt="json"
+				local target_fmt="$fmt"
+				[[ "$target_fmt" == "yml" ]] && target_fmt="yaml"
+				if [[ "$source_fmt" == "$target_fmt" ]]; then
+					cp "$tfile" "$out"
+				else
+					local tmp_template_json
+					tmp_template_json="$(mktemp -t spec_template_convert_XXXXXX.json)"
+					spec_to_json "$tfile" "$tmp_template_json" || { rm -f "$tmp_template_json"; die "Template conversion failed"; }
+					if [[ "$target_fmt" == "json" ]]; then
+						cp "$tmp_template_json" "$out"
+					else
+						run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp_template_json" --from json --to "$target_fmt" > "$out" 2>/dev/null || { rm -f "$tmp_template_json"; die "Template $target_fmt conversion failed"; }
+					fi
+					rm -f "$tmp_template_json" 2>/dev/null
+				fi
 			fi
 			;;
 		github:*)
@@ -985,6 +1002,7 @@ cmd_convert() {
 	[[ -z "$f" ]] && die "Usage: spec convert <file> --to yaml|json|toml [--output <path>]"
 	[[ -f "$f" ]] || die "File not found: $f"
 	is_safe_path "$f" || exit 1
+	[[ "$to" =~ ^(yaml|yml|json|toml)$ ]] || die "Invalid target format: $to (use yaml, json, or toml)"
 
 	local tmp; tmp="$(mktemp -t spec_convert_XXXXXX.json)"
 	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
