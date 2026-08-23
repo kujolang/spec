@@ -25,49 +25,33 @@ KNOWN_TOP_LEVEL_FIELDS := [
 	"priority", "assignee", "tags", "parent_id"
 ]
 
-func is_known_check_type(ct) {
+func contains(items, value) {
 	i := 0
-	while i < len(KNOWN_CHECK_TYPES) {
-		if KNOWN_CHECK_TYPES[i] == ct { return true }
+	while i < len(items) {
+		if items[i] == value { return true }
 		i := i + 1
 	}
 	return false
+}
+
+func is_known_check_type(ct) {
+	return contains(KNOWN_CHECK_TYPES, ct)
 }
 
 func is_valid_priority(p) {
-	i := 0
-	while i < len(VALID_PRIORITIES) {
-		if VALID_PRIORITIES[i] == p { return true }
-		i := i + 1
-	}
-	return false
+	return contains(VALID_PRIORITIES, p)
 }
 
 func is_valid_severity(s) {
-	i := 0
-	while i < len(VALID_SEVERITIES) {
-		if VALID_SEVERITIES[i] == s { return true }
-		i := i + 1
-	}
-	return false
+	return contains(VALID_SEVERITIES, s)
 }
 
 func is_valid_status(s) {
-	i := 0
-	while i < len(VALID_STATUSES) {
-		if VALID_STATUSES[i] == s { return true }
-		i := i + 1
-	}
-	return false
+	return contains(VALID_STATUSES, s)
 }
 
 func is_known_top_level_field(k) {
-	i := 0
-	while i < len(KNOWN_TOP_LEVEL_FIELDS) {
-		if KNOWN_TOP_LEVEL_FIELDS[i] == k { return true }
-		i := i + 1
-	}
-	return false
+	return contains(KNOWN_TOP_LEVEL_FIELDS, k)
 }
 
 export func validate_spec(spec) {
@@ -84,27 +68,29 @@ export func validate_spec(spec) {
 	if len(goal) > 5000 { errors := push(errors, "Field goal exceeds 5000 characters") }
 
 	# String fields
-	errors := _check_str(spec, "version", errors, false)
-	errors := _check_str(spec, "id", errors, false)
-	errors := _check_str(spec, "status", errors, false)
-	errors := _check_str(spec, "created_at", errors, false)
-	errors := _check_str(spec, "updated_at", errors, false)
-	errors := _check_str(spec, "completed_at", errors, false)
-	errors := _check_str(spec, "background", errors, false)
-	errors := _check_str(spec, "scope", errors, false)
-	errors := _check_str(spec, "estimated_effort", errors, false)
-	errors := _check_str(spec, "assignee", errors, false)
+	string_fields := [
+		"version", "id", "status", "created_at", "updated_at",
+		"completed_at", "background", "scope", "estimated_effort", "assignee"
+	]
+	field_idx := 0
+	while field_idx < len(string_fields) {
+		errors = _check_str(spec, string_fields[field_idx], errors, false)
+		field_idx := field_idx + 1
+	}
 
 	# Array of strings
-	errors := _check_str_array(spec, "non_goals", errors, 100)
-	errors := _check_str_array(spec, "relevant_systems", errors, 50)
-	errors := _check_str_array(spec, "likely_files", errors, 200)
-	errors := _check_str_array(spec, "acceptance_criteria", errors, 100)
+	array_rules := [
+		["non_goals", 100], ["relevant_systems", 50], ["likely_files", 200],
+		["acceptance_criteria", 100], ["review_expectations", 50],
+		["human_approval_points", 50], ["tags", 50], ["children", 200]
+	]
+	array_idx := 0
+	while array_idx < len(array_rules) {
+		rule := array_rules[array_idx]
+		errors = _check_str_array(spec, rule[0], errors, rule[1])
+		array_idx := array_idx + 1
+	}
 	errors := _check_dependencies(spec, errors)
-	errors := _check_str_array(spec, "review_expectations", errors, 50)
-	errors := _check_str_array(spec, "human_approval_points", errors, 50)
-	errors := _check_str_array(spec, "tags", errors, 50)
-	errors := _check_str_array(spec, "children", errors, 200)
 
 	# Typed schema fields
 	if has_key(spec, "status") {
