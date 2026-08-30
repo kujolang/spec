@@ -7,6 +7,8 @@ on:
 
 jobs:
   test:
+    env:
+      KUJO_RUNTIME_VERSION: "1.1.0"
     strategy:
       fail-fast: false
       matrix:
@@ -21,8 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Set up Kujo runtime
-        run: |
-          echo "KUJO_BIN=kujo" >> $GITHUB_ENV
+        run: bash .github/scripts/install-kujo-runtime.sh "$KUJO_RUNTIME_VERSION" "$RUNNER_TEMP/kujo-runtime/bin"
       - name: Set benchmark profile
         run: |
           echo "SPEC_BENCH_PROFILE=${{ matrix.bench_profile }}" >> $GITHUB_ENV

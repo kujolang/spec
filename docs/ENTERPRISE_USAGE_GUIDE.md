@@ -70,8 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Kujo runtime
-        run: echo "Set KUJO_BIN in your CI environment"
+      - name: Install pinned Kujo runtime
+        env:
+          KUJO_RUNTIME_VERSION: "1.1.0"
+        run: bash .github/scripts/install-kujo-runtime.sh "$KUJO_RUNTIME_VERSION" "$RUNNER_TEMP/kujo-runtime/bin"
       - name: Validate specs
         run: |
           export SPEC_SAFE_WRITE=on

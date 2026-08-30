@@ -23,6 +23,8 @@ check "README present" test -f README.md
 check "Schema present" test -f schema/spec.schema.json
 check "CLI script present" test -f scripts/spec
 check "Docker runtime downloads require checksum verification" bash -c "grep -q 'KUJO_BIN_SHA256' Dockerfile && grep -q 'sha256sum -c' Dockerfile"
+check "Hosted CI installs a pinned checksum-verified Kujo runtime" bash -c "grep -q 'KUJO_RUNTIME_VERSION: \"1.1.0\"' .github/workflows/ci.yml && grep -q 'install-kujo-runtime.sh' .github/workflows/ci.yml && grep -q 'expected_sha' .github/scripts/install-kujo-runtime.sh && grep -q 'kujo-v1.1.0-linux-x64.tar.gz' .github/kujo-runtime-checksums.txt"
+check "Runtime installer rejects unpinned versions before download" bash -c "! bash .github/scripts/install-kujo-runtime.sh 9.9.9 2>/dev/null"
 
 echo ""
 report_results "Results"

@@ -8,6 +8,7 @@
 - Batched `validate-all` path checks, reducing the 100-file local benchmark from 39.82s to 0.92s on the audited host.
 - Isolated conversion caches by user and rejected symlink cache directories.
 - Required SHA-256 verification when Docker builds download a Kujo runtime binary.
+- Installed the pinned Kujo v1.1.0 release in hosted Linux/macOS CI from repository-owned checksums.
 
 ## [1.0.0] - 2026-08-08
 

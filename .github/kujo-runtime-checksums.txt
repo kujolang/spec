@@ -1,0 +1,4 @@
+# Kujo v1.1.0 release archives used by .github/scripts/install-kujo-runtime.sh.
+6cff72d35ed0b43daaf43bb50e2925e86ed72ed0e0e2433db46d2d069f44af91  kujo-v1.1.0-linux-x64.tar.gz
+3ba1b2bd89221f2e0024ea9cff7351771bf69cd17edac96fef8f9cd01d3af7a6  kujo-v1.1.0-macos-arm64.tar.gz
+9b344ca2cbb838f03033565f9dff5885191e49b9443f5cd2610f8d766218f416  kujo-v1.1.0-macos-x64.tar.gz

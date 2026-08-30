@@ -31,7 +31,7 @@ The untracked user file `_test_schema_fields.json` existed before the audit and 
 | SEC-04 | P2 | Filesystem | Conversion caching used a predictable shared fallback path. | `${TMPDIR:-/tmp}/.spec_cache`. | Use a private per-user directory and reject symlink cache paths. | Fixed |
 | REL-02 | P2 | Configuration | Invalid `SPEC_TIMEOUT` values reached process wrappers unchecked. | Environment value was passed to `timeout`/Perl alarm. | Require a positive integer at startup. | Fixed |
 | DOC-01 | P2 | Documentation | Architecture and security docs still described retired Python conversion paths. | CLI uses `src/convert.kujo`; docs said PyYAML/TOML helpers. | Correct requirements, architecture, security, and ADR status. | Fixed |
-| CI-01 | Needs more evidence | CI | The workflow names `kujo` but does not install it. | `.github/workflows/ci.yml` only writes `KUJO_BIN=kujo`; no runs were available through `gh run list`. | Establish a pinned Kujo runtime action/artifact, then consume it here. | Cross-repo follow-up |
+| CI-01 | P1 | CI | The workflow named `kujo` but did not install it. | `.github/workflows/ci.yml` only wrote `KUJO_BIN=kujo`; no runs were available through `gh run list`. | Install Kujo v1.1.0 release archives using repository-owned platform checksums. | Fixed |
 
 ## Changes Implemented
 
@@ -56,6 +56,12 @@ Compatibility: successful command output and supported formats are unchanged. Pr
 Docker runtime downloads now require a SHA-256 and the supply-chain gate locks this in. Documentation now reflects Kujo-native YAML/TOML conversion and Python's actual CLI-support role; ADR-004 is marked superseded without deleting the historical decision.
 
 Files: `Dockerfile`, `scripts/supply_chain_policy_check.sh`, `README.md`, `docs/ARCHITECTURE.md`, `docs/adr/*`, `CHANGELOG.md`.
+
+### Hosted CI runtime provisioning
+
+Linux x64, macOS x64, and macOS arm64 runners now download the explicit Kujo v1.1.0 release archive, verify it against repository-owned SHA-256 values, reject unexpected archive paths, verify the installed version, and export `KUJO_BIN`/`PATH` for later steps. The installer rejects versions absent from the checksum manifest before making a network request.
+
+Files: `.github/workflows/ci.yml`, `.github/scripts/install-kujo-runtime.sh`, `.github/kujo-runtime-checksums.txt`, `scripts/supply_chain_policy_check.sh`.
 
 ## Performance & Efficiency
 
@@ -84,15 +90,7 @@ Remaining concern: Spec executes the Kujo runtime with the caller's permissions;
 
 ## Cross-Repository Follow-Ups
 
-### Kujo runtime distribution for CI
-
-- Affected repository: `kujolang/kujo` (and any shared Kujo CI/action repository).
-- Contract: Spec requires an executable Kujo runtime compatible with its module and structured-data APIs.
-- Evidence: Spec CI sets `KUJO_BIN=kujo` but contains no installation step; the GitHub API exposed no run history to prove an external runner image supplies it.
-- Impact: clean hosted runners may fail before tests begin.
-- Recommended change: publish a pinned, checksum-verifiable runtime artifact or reusable setup action, then update Spec CI to consume it.
-- Current repository dependency: not required for local correctness; required for reproducible hosted CI.
-- Compatibility: pin by version/digest and retain the `KUJO_BIN` override.
+None. The Kujo repository already publishes platform archives and checksums; Spec now consumes those v1.1.0 assets without requiring a sibling-repository change.
 
 ## Remaining Work
 
@@ -100,7 +98,7 @@ Remaining concern: Spec executes the Kujo runtime with the caller's permissions;
 - P1: none identified within repository scope.
 - P2: none left with sufficient evidence.
 - P3: formatting/style churn was intentionally skipped.
-- Needs more evidence: hosted CI runtime provisioning (CI-01); removal of packaged legacy Python parser scripts, which may have downstream consumers.
+- Needs more evidence: removal of packaged legacy Python parser scripts, which may have downstream consumers.
 - Not worth changing: micro-optimizing graph generation, which is not a measured hot path.
 
 ## Verification Receipt
@@ -113,7 +111,7 @@ Remaining concern: Spec executes the Kujo runtime with the caller's permissions;
 | `bash scripts/verify_completion_parity.sh` | PASS — 132 passed, 0 failed |
 | `bash scripts/verify_test_runtime_parity.sh` | PASS — 3 passed, 0 failed |
 | `bash scripts/release_quality_gates.sh` | PASS — 20 passed, 0 failed |
-| `bash scripts/supply_chain_policy_check.sh` | PASS — 11 passed, 0 failed |
+| `bash scripts/supply_chain_policy_check.sh` | PASS — 13 passed, 0 failed |
 | `bash -n scripts/spec scripts/commands/maintenance.sh tests/*.sh scripts/*.sh` | PASS |
 | `python3 -m compileall -q scripts` | PASS |
 | `git diff --check` | PASS |
