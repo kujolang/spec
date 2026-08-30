@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-30
+
 - Hardened interactive YAML creation and graph-label escaping for untrusted spec content.
 - Made render and export commands fail clearly when the Kujo runtime fails or emits no output.
 - Aligned fast batch validation with schema limits and eliminated false-success exit-code wrapping.

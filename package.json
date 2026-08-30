@@ -1,6 +1,6 @@
 {
   "name": "kujo-spec",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Structured task definition format for AI-native development",
   "homepage": "https://github.com/kujolang/spec",
   "repository": {
@@ -25,8 +25,15 @@
     "node": ">=16"
   },
   "scripts": {
-    "postinstall": "echo '⚠️  Spec requires the Kujo language runtime. Set KUJO_BIN env var or ensure kujo is on PATH.'"
+    "postinstall": "echo '\u26a0\ufe0f  Spec requires the Kujo language runtime. Set KUJO_BIN env var or ensure kujo is on PATH.'"
   },
-  "keywords": ["kujo", "spec", "task-definition", "ai", "agents", "cli"],
+  "keywords": [
+    "kujo",
+    "spec",
+    "task-definition",
+    "ai",
+    "agents",
+    "cli"
+  ],
   "author": "Kujolang <contact@kujolang.ai>"
 }

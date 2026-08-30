@@ -1,6 +1,6 @@
 [package]
 name = "spec"
-version = "1.0.0"
+version = "1.0.1"
 description = "Structured task definition format for AI-native development — turns messy human instructions into clear machine-readable implementation context."
 license = "MIT"
 authors = ["Kujolang <contact@kujolang.ai>"]

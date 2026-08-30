@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 KUJO_BIN="${KUJO_BIN:-kujo}"
-VERSION="1.0.0"
+VERSION="1.0.1"
 SPEC_SCHEMA_VERSION="1.0.0"
 HELPER="$SCRIPT_DIR/spec_helpers.py"
 SPEC_TIMEOUT="${SPEC_TIMEOUT:-30}"
