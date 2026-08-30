@@ -6,7 +6,7 @@ Spec reads user-provided spec files (YAML, TOML, JSON) and validates them agains
 
 ### 1. Command Injection Prevention (SEC-01 — fixed v0.1.0)
 
-Filenames are passed to Python parsers via `sys.argv` (not string interpolation), eliminating the command injection vector that existed in earlier inline Python code.
+Filenames are passed to Kujo and Python helpers as arguments (not interpolated into executable source), eliminating the command injection vector that existed in earlier inline Python code.
 
 ### 2. Path Traversal Protection (SEC-02 — fixed v0.1.0)
 
@@ -26,9 +26,9 @@ The `--name` parameter in `spec init` and `spec init-interactive` is validated a
 
 The Kujo validate module enforces a 1MB maximum file size before parsing spec content.
 
-### 5. YAML Safe Loading
+### 5. Structured Data Parsing
 
-When PyYAML is available, `yaml.safe_load()` is used (not `yaml.load()`), preventing arbitrary code execution via YAML tags.
+Spec input conversion uses Kujo's `parse_yaml`, `parse_toml`, and `parse_json` functions. Spec content is never evaluated as executable code. Interactive YAML creation uses `yaml.safe_dump()` when PyYAML is available and a JSON-compatible YAML subset otherwise.
 
 ### 6. Output Path Guardrails
 
@@ -51,8 +51,8 @@ Docker builds that download a Kujo runtime with `KUJO_BIN_URL` must also supply 
 
 ## Known Limitations
 
-- **YAML parsing**: The fallback parser (used when PyYAML isn't available) handles only a basic subset of YAML. Complex YAML features (anchors, tags, multi-document) are not supported and will cause parse errors.
-- **TOML parsing**: Similarly limited fallback parser when `tomllib`/`tomli` isn't available.
+- **YAML parsing**: Complex YAML features (anchors, tags, multi-document) are outside the supported subset and may produce parse errors.
+- **TOML parsing**: Nested tables and arrays of tables remain outside the supported subset.
 - **Kujo runtime**: The validate/render/export modules run via the Kujo language runtime, which may have its own security characteristics.
 - **No sandboxing**: Spec processing runs with the user's full permissions. Filesystem access is required for reading spec files.
 - **Temp files**: Temporary JSON files are created during processing (via `mktemp`). These are cleaned up on script exit.

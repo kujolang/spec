@@ -62,7 +62,7 @@ PASS: Spec is valid
 ## Requirements
 
 - **Kujo language runtime** v0.1.0+ (set `KUJO_BIN` env var or ensure it's at the default path)
-- **Python 3** (for YAML/TOML parsing; JSON specs work without it)
+- **Python 3.8+** (used by CLI validation, path safety, metadata, and batch helpers)
 - No API keys or external services needed
 
 ## Commands
@@ -260,7 +260,7 @@ Spec is designed to integrate with the Kujo ecosystem:
 
 - YAML parsing: complex YAML features (anchors, multi-document, tags) are not supported. Use the subset documented above.
 - TOML parsing: basic key=value only. Nested tables and arrays of tables are not yet supported.
-- Kujo runtime: The `spec` CLI uses a shell script wrapper for YAML/TOML parsing. The Kujo validate/render/export modules use JSON internally. Cross-module imports (`from src.common import ...`) are supported as of Kujo v1.0.0+.
+- Kujo runtime: The shell CLI delegates YAML/TOML conversion plus validate/render/export logic to Kujo modules. Cross-module imports (`from src.common import ...`) are supported as of Kujo v1.0.0+.
 - The `KUJO_BIN` environment variable must point to the Kujo language runtime (not the Python linter).
 - File size limit: 1MB maximum per spec file. Larger files are rejected before parsing.
 - When `SPEC_SAFE_WRITE` is enabled, output paths are restricted to the current project root unless `--unsafe-write` is provided.
@@ -272,9 +272,9 @@ Spec is designed to integrate with the Kujo ecosystem:
 |---|---|---|
 | Shell | Bash 3.2+ | macOS default Bash is supported |
 | Kujo runtime | Kujo language runtime | Set `KUJO_BIN` if runtime is not on `PATH` |
-| Python | Python 3.8+ | Required for YAML/TOML conversion helpers |
-| YAML | `pyyaml` preferred | Fallback parser supports documented subset |
-| TOML | stdlib `tomllib` or fallback parser | Nested tables are currently out of scope |
+| Python | Python 3.8+ | Required for CLI helpers and batch validation |
+| YAML | Kujo `parse_yaml` / `to_yaml` | Documented subset only |
+| TOML | Kujo `parse_toml` / `to_toml` | Nested tables are currently out of scope |
 
 ## Repository Root Files
 

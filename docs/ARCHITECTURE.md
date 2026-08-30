@@ -17,7 +17,7 @@ Spec is a structured task definition format for AI-native development in the Kuj
     │ YAML/   │ │ Kujo    │ │ Kujo       │
     │ TOML    │ │ Valid.  │ │ Render/    │
     │ Parser  │ │ Module  │ │ Export     │
-    │ (Python)│ │         │ │ Modules    │
+    │ (Kujo)  │ │         │ │ Modules    │
     └────┬────┘ └────┬────┘ └────┬───────┘
          │           │           │
          ▼           ▼           ▼
@@ -34,7 +34,7 @@ Spec is a structured task definition format for AI-native development in the Kuj
 Bash script that:
 - Routes commands (init, validate, render, export, version, help)
 - Sources modular handlers from `scripts/commands/maintenance.sh` for operational commands (`ci`, `template`, `doctor`, `changelog`, `graph`, etc.)
-- Converts YAML/TOML to JSON using Python (with fallback parser)
+- Converts YAML/TOML to JSON through `src/convert.kujo`
 - Delegates validation, rendering, and export to Kujo modules
 - Provides consistent CLI UX across all commands
 
@@ -80,7 +80,7 @@ User writes .spec.yml
         ▼
 spec CLI (Bash)
         │
-        ├── spec_to_json() → Python YAML parser → temp .json
+        ├── spec_to_json() → Kujo YAML parser → temp .json
         │
         ▼
 kujo run src/validate.kujo --json <temp>
@@ -101,7 +101,7 @@ spec CLI parses result, reports PASS/FAIL
 
 3. **Kujo for core logic**: Validation, rendering, and export run in Kujo for ecosystem consistency and future compatibility.
 
-4. **Python for YAML/TOML**: The Kujo runtime doesn't have YAML/TOML parsers. Python's `yaml` library is battle-tested and widely available.
+4. **Kujo-native YAML/TOML conversion**: `src/convert.kujo` uses the runtime's structured-data parsers and serializers. Python remains a CLI support dependency for path, metadata, and batch operations.
 
 5. **No type() in conditions**: Kujo runtime v1.0.0 has known quirks with `type()` checks in conditional branches. The modules use `has_key()` instead.
 
@@ -111,9 +111,9 @@ spec CLI parses result, reports PASS/FAIL
 |---|---|---|
 | Shell | Bash 3.2+ | macOS default Bash is supported (no Bash 4 associative arrays required) |
 | Kujo runtime | Kujo language runtime with module import support | Set `KUJO_BIN` to the runtime binary |
-| Python | Python 3.8+ | Used for YAML/TOML conversion helpers |
-| YAML parser | `pyyaml` preferred | Fallback parser supports documented subset |
-| TOML parser | stdlib `tomllib` or fallback parser | Nested tables remain out of scope |
+| Python | Python 3.8+ | Used for CLI helpers and batch validation |
+| YAML parser | Kujo runtime | Documented subset only |
+| TOML parser | Kujo runtime | Nested tables remain out of scope |
 
 Unsupported assumptions:
 - Running CLI commands from outside the repository root while relying on relative module resolution.
@@ -124,7 +124,7 @@ Unsupported assumptions:
 - All spec processing is local (no network calls)
 - File size limited to 1MB
 - JSON parsing uses Kujo's builtin (safe)
-- YAML parsing uses Python's `yaml.safe_load()` (safe)
+- YAML/TOML conversion uses Kujo's structured-data parsers; no spec content is evaluated as code.
 - No eval/exec of spec content
 - No API keys or secrets in spec files by design
 - File reads are restricted to the current project tree and reject path traversal plus symlink escapes.

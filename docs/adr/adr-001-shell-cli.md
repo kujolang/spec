@@ -15,7 +15,7 @@ Use a bash shell script as the CLI wrapper (`scripts/spec`), with Kujo modules h
 
 ## Rationale
 
-- **Multi-format parsing:** YAML and TOML parsing are not yet available as Kujo-native libraries. Python provides mature `pyyaml` and built-in `tomllib`/`tomli` modules.
+- **Multi-format parsing:** The shell wrapper delegates structured-data conversion to Kujo's native parsers and keeps filesystem/process orchestration in Bash and Python helpers.
 - **Kujo runtime maturity:** At v1.0.0, Kujo's `kujo run` mode for standalone scripts works well for the core logic modules but lacks some conveniences for CLI building (arg parsing libraries, colored output, etc.).
 - **Unix philosophy:** The shell script follows Unix conventions — it's a thin orchestrator that delegates to specialized tools.
 - **Developer familiarity:** Bash is universally available on macOS and Linux. No additional runtime is needed beyond Python 3 and the Kujo binary.
@@ -30,5 +30,5 @@ Use a bash shell script as the CLI wrapper (`scripts/spec`), with Kujo modules h
 
 ## Alternatives Considered
 
-- **Pure Kujo CLI:** Rejected due to lack of YAML/TOML parsing libraries and CLI ergonomics in Kujo v1.0.0. This remains a future goal (SHOW-01 in the enterprise checklist).
+- **Pure Kujo CLI:** Rejected because filesystem/process orchestration and cross-platform CLI ergonomics still benefit from the wrapper. Structured-data parsing has since moved to Kujo-native functions.
 - **Python CLI:** Rejected because the project's purpose is to showcase the Kujo language. A Python CLI would defeat that purpose.

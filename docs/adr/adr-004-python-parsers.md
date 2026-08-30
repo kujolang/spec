@@ -1,6 +1,6 @@
 # ADR-004: Python for YAML/TOML parsing
 
-**Status:** Accepted  
+**Status:** Superseded by Kujo-native conversion
 **Date:** 2026-05-25
 
 ## Context
@@ -13,6 +13,10 @@ Spec needs to parse YAML and TOML files into JSON before Kujo modules can proces
 
 Use Python 3 with `yaml.safe_load` (PyYAML) for YAML and a simple Python script for TOML.
 
+## Current State
+
+The CLI now delegates YAML/TOML conversion to `src/convert.kujo`, which uses Kujo's native `parse_yaml`, `parse_toml`, `to_yaml`, and `to_toml` functions. The standalone Python parser scripts remain packaged for compatibility but are not on the primary CLI execution path. Python is still required by CLI support and batch-validation helpers.
+
 ## Rationale
 
 - **Maturity:** PyYAML is battle-tested and handles edge cases correctly.
@@ -20,7 +24,7 @@ Use Python 3 with `yaml.safe_load` (PyYAML) for YAML and a simple Python script 
 - **Speed of development:** Python parsers took hours to integrate. Kujo-native parsers would take days or weeks to reach the same level of correctness.
 - **Subset usage:** Spec only uses a small subset of YAML/TOML (flat key-value, arrays, no anchors/tags/complex nesting). This means the Python scripts are simple and fast.
 
-## Consequences
+## Consequences at Time of Decision
 
 - **Positive:** Reliable parsing with well-tested libraries.
 - **Positive:** Clear error messages from Python tracebacks when parsing fails.
