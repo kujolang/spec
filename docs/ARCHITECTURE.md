@@ -131,3 +131,5 @@ Unsupported assumptions:
 - Output writes can be restricted with `SPEC_SAFE_WRITE=on`; `--unsafe-write` is an explicit override.
 - User-home templates can be blocked with `SPEC_TEMPLATE_SOURCE_POLICY=project-only` or `--strict-template-source`.
 - Conversion caching uses canonical file paths and content-aware signatures so stale or colliding cache entries are not reused.
+- Conversion caches are private per-user directories and are disabled when the cache path is a symlink or cannot be restricted to mode `0700`.
+- `validate-all` checks the requested directory boundary once, then validates converted JSON inputs in one Python process. This preserves deterministic ordering while avoiding one path-resolution and interpreter startup per file.

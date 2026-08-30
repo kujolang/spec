@@ -70,13 +70,17 @@ export func validate_spec(spec) {
 	# String fields
 	string_fields := [
 		"version", "id", "status", "created_at", "updated_at",
-		"completed_at", "background", "scope", "estimated_effort", "assignee"
+		"completed_at", "background", "scope", "estimated_effort", "assignee", "parent_id"
 	]
 	field_idx := 0
 	while field_idx < len(string_fields) {
 		errors = _check_str(spec, string_fields[field_idx], errors, false)
 		field_idx := field_idx + 1
 	}
+	errors = _check_str_length(spec, "background", errors, 10000)
+	errors = _check_str_length(spec, "scope", errors, 10000)
+	errors = _check_str_length(spec, "estimated_effort", errors, 200)
+	errors = _check_str_length(spec, "assignee", errors, 200)
 
 	# Array of strings
 	array_rules := [
@@ -90,6 +94,16 @@ export func validate_spec(spec) {
 		errors = _check_str_array(spec, rule[0], errors, rule[1])
 		array_idx := array_idx + 1
 	}
+	if has_key(spec, "acceptance_criteria") && type(spec["acceptance_criteria"]) == "array" && len(spec["acceptance_criteria"]) == 0 {
+		errors := push(errors, "Field acceptance_criteria requires at least 1 item")
+	}
+	errors = _check_str_array_item_length(spec, "non_goals", errors, 2000)
+	errors = _check_str_array_item_length(spec, "relevant_systems", errors, 500)
+	errors = _check_str_array_item_length(spec, "likely_files", errors, 1000)
+	errors = _check_str_array_item_length(spec, "acceptance_criteria", errors, 2000)
+	errors = _check_str_array_item_length(spec, "review_expectations", errors, 1000)
+	errors = _check_str_array_item_length(spec, "human_approval_points", errors, 1000)
+	errors = _check_str_array_item_length(spec, "tags", errors, 200)
 	errors := _check_dependencies(spec, errors)
 
 	# Typed schema fields
@@ -127,7 +141,8 @@ export func validate_spec(spec) {
 
 	# Priority
 	priority := dict_get(spec, "priority", "medium")
-	if is_valid_priority(priority) == false { errors := push(errors, "Invalid priority: " + priority + " (use critical/high/medium/low)") }
+	if type(priority) != "string" { errors := push(errors, "Field priority must be a string") }
+	else { if is_valid_priority(priority) == false { errors := push(errors, "Invalid priority: " + priority + " (use critical/high/medium/low)") } }
 
 	# Top-level unknown field lint gate (warning in default mode; error in strict mode).
 	warnings := _check_unknown_top_level_fields(spec, warnings)
@@ -166,6 +181,13 @@ func _check_str(spec, key, errors, required) {
 	return errors
 }
 
+func _check_str_length(spec, key, errors, max_length) {
+	if has_key(spec, key) && type(spec[key]) == "string" && len(spec[key]) > max_length {
+		errors := push(errors, "Field " + key + " exceeds " + to_string(max_length) + " characters")
+	}
+	return errors
+}
+
 func _check_str_array(spec, key, errors, max_items) {
 	has_arr := has_key(spec, key)
 	if has_arr == false || has_arr == 0 { return errors }
@@ -180,6 +202,21 @@ func _check_str_array(spec, key, errors, max_items) {
 	while i < count {
 		if type(arr[i]) != "string" {
 			errors := push(errors, "Field " + key + "[" + to_string(i) + "] must be a string")
+		}
+		i := i + 1
+	}
+	return errors
+}
+
+func _check_str_array_item_length(spec, key, errors, max_length) {
+	has_arr := has_key(spec, key)
+	if has_arr == false || has_arr == 0 { return errors }
+	if type(spec[key]) != "array" { return errors }
+	arr := spec[key]
+	i := 0
+	while i < len(arr) {
+		if type(arr[i]) == "string" && len(arr[i]) > max_length {
+			errors := push(errors, "Field " + key + "[" + to_string(i) + "] exceeds " + to_string(max_length) + " characters")
 		}
 		i := i + 1
 	}
@@ -226,17 +263,43 @@ func _check_eval_requirements(spec, errors, warnings) {
 	has_er := has_key(spec, "eval_requirements")
 	if has_er == false || has_er == 0 { return {"errors": errors, "warnings": warnings} }
 	arr := spec["eval_requirements"]
+	if type(arr) != "array" {
+		errors := push(errors, "Field eval_requirements must be an array")
+		return {"errors": errors, "warnings": warnings}
+	}
 	count := len(arr)
 	if count > 200 { errors := push(errors, "Field eval_requirements exceeds 200 items") }
 	i := 0
 	while i < count {
 		er := arr[i]
+		if type(er) != "dict" {
+			errors := push(errors, "eval_requirements[" + to_string(i) + "] must be an object")
+			i := i + 1
+			continue
+		}
 		has_desc := has_key(er, "description")
-		if has_desc == false || has_desc == 0 { errors := push(errors, "eval_requirements[" + to_string(i) + "] missing description") }
+		if has_desc == false || has_desc == 0 { errors := push(errors, "eval_requirements[" + to_string(i) + "] must have a string description") }
+		else {
+			if type(er["description"]) != "string" { errors := push(errors, "eval_requirements[" + to_string(i) + "] must have a string description") }
+			else { if len(er["description"]) > 2000 { errors := push(errors, "eval_requirements[" + to_string(i) + "].description exceeds 2000 characters") } }
+		}
 		has_ct := has_key(er, "check_type")
 		if has_ct == true || has_ct == 1 {
 			ct := er["check_type"]
-			if ct != "" && is_known_check_type(ct) == false { warnings := push(warnings, "Unknown check_type: " + ct) }
+			if type(ct) != "string" { errors := push(errors, "eval_requirements[" + to_string(i) + "].check_type must be a string") }
+			else { if ct != "" && is_known_check_type(ct) == false { warnings := push(warnings, "Unknown check_type: " + ct) } }
+		}
+		if has_key(er, "params") && type(er["params"]) != "dict" { errors := push(errors, "eval_requirements[" + to_string(i) + "].params must be an object") }
+		if has_key(er, "tags") {
+			tags := er["tags"]
+			if type(tags) != "array" { errors := push(errors, "eval_requirements[" + to_string(i) + "].tags must be an array of strings") }
+			else {
+				ti := 0
+				while ti < len(tags) {
+					if type(tags[ti]) != "string" { errors := push(errors, "eval_requirements[" + to_string(i) + "].tags must be an array of strings") }
+					ti := ti + 1
+				}
+			}
 		}
 		i := i + 1
 	}

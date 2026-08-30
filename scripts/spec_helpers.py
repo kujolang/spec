@@ -148,10 +148,18 @@ def validate_quiet(filepath, strict=False):
     elif len(goal) > 5000:
         errors.append("Field goal exceeds 5000 characters")
 
+    string_limits = {
+        "background": 10000,
+        "scope": 10000,
+        "estimated_effort": 200,
+        "assignee": 200,
+    }
     for key in ("version", "id", "status", "created_at", "updated_at", "completed_at",
-                "background", "scope", "estimated_effort", "assignee"):
+                "background", "scope", "estimated_effort", "assignee", "parent_id"):
         if key in spec and not isinstance(spec[key], str):
             errors.append(f"Field {key} must be a string, got non-string value")
+        elif key in spec and key in string_limits and len(spec[key]) > string_limits[key]:
+            errors.append(f"Field {key} exceeds {string_limits[key]} characters")
 
     max_items = {
         "non_goals": 100,
@@ -163,6 +171,15 @@ def validate_quiet(filepath, strict=False):
         "tags": 50,
         "children": 200,
     }
+    item_limits = {
+        "non_goals": 2000,
+        "relevant_systems": 500,
+        "likely_files": 1000,
+        "acceptance_criteria": 2000,
+        "review_expectations": 1000,
+        "human_approval_points": 1000,
+        "tags": 200,
+    }
     for key, limit in max_items.items():
         if key not in spec:
             continue
@@ -172,9 +189,13 @@ def validate_quiet(filepath, strict=False):
             continue
         if len(value) > limit:
             errors.append(f"Field {key} exceeds maximum of {limit} items")
+        if key == "acceptance_criteria" and not value:
+            errors.append("Field acceptance_criteria requires at least 1 item")
         for idx, item in enumerate(value):
             if not isinstance(item, str):
                 errors.append(f"Field {key}[{idx}] must be a string")
+            elif key in item_limits and len(item) > item_limits[key]:
+                errors.append(f"Field {key}[{idx}] exceeds {item_limits[key]} characters")
 
     status = spec.get("status")
     if isinstance(status, str) and status not in VALID_STATUSES:
@@ -202,6 +223,8 @@ def validate_quiet(filepath, strict=False):
                 if isinstance(dep, dict):
                     if not isinstance(dep.get("description"), str):
                         errors.append(f"dependencies[{idx}] must have a string description")
+                    elif len(dep["description"]) > 2000:
+                        errors.append(f"dependencies[{idx}].description exceeds 2000 characters")
                     if "type" in dep and dep["type"] not in {"blocks", "blocked_by"}:
                         errors.append(f"dependencies[{idx}].type must be blocks or blocked_by")
                     if "spec_id" in dep and not isinstance(dep["spec_id"], str):
@@ -220,11 +243,22 @@ def validate_quiet(filepath, strict=False):
                 if not isinstance(er, dict):
                     errors.append(f"eval_requirements[{idx}] must be an object")
                     continue
-                if "description" not in er:
-                    errors.append(f"eval_requirements[{idx}] missing description")
+                description = er.get("description")
+                if not isinstance(description, str):
+                    errors.append(f"eval_requirements[{idx}] must have a string description")
+                elif len(description) > 2000:
+                    errors.append(f"eval_requirements[{idx}].description exceeds 2000 characters")
                 check_type = er.get("check_type", "")
-                if check_type and check_type not in KNOWN_CHECK_TYPES:
+                if not isinstance(check_type, str):
+                    errors.append(f"eval_requirements[{idx}].check_type must be a string")
+                elif check_type and check_type not in KNOWN_CHECK_TYPES:
                     warnings.append(f"Unknown check_type: {check_type}")
+                if "params" in er and not isinstance(er["params"], dict):
+                    errors.append(f"eval_requirements[{idx}].params must be an object")
+                if "tags" in er:
+                    tags = er["tags"]
+                    if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+                        errors.append(f"eval_requirements[{idx}].tags must be an array of strings")
 
     risks = spec.get("risks", [])
     if "risks" in spec:
@@ -241,8 +275,12 @@ def validate_quiet(filepath, strict=False):
                     errors.append(f"risks[{idx}] missing risk field")
                 elif not isinstance(risk["risk"], str):
                     errors.append(f"risks[{idx}].risk must be a string")
+                elif len(risk["risk"]) > 2000:
+                    errors.append(f"risks[{idx}].risk exceeds 2000 characters")
                 if "mitigation" in risk and not isinstance(risk["mitigation"], str):
                     errors.append(f"risks[{idx}].mitigation must be a string")
+                elif "mitigation" in risk and len(risk["mitigation"]) > 2000:
+                    errors.append(f"risks[{idx}].mitigation exceeds 2000 characters")
                 severity = risk.get("severity")
                 if severity is not None and not isinstance(severity, str):
                     errors.append(f"risks[{idx}].severity must be a string")
@@ -250,7 +288,7 @@ def validate_quiet(filepath, strict=False):
                     warnings.append(f"Invalid severity: {severity}")
 
     priority = spec.get("priority", "medium")
-    if priority not in VALID_PRIORITIES:
+    if not isinstance(priority, str) or priority not in VALID_PRIORITIES:
         errors.append(f"Invalid priority: {priority} (use critical/high/medium/low)")
 
     for key in spec:

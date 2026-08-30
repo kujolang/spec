@@ -742,5 +742,73 @@ check "benchmark writes ci_runtime_ms summary" bash -c "
 # 45. FEAT-21: shell completions stay aligned with key command surface
 check "completion parity script passes" bash -c "'$PROJECT_DIR/scripts/verify_completion_parity.sh' >/dev/null"
 
+# 46. REL-01: output commands must surface runtime failures instead of succeeding empty.
+check_fail "render surfaces Kujo runtime failures" env KUJO_BIN=/usr/bin/false "$SPEC" render "$PROJECT_DIR/fixtures/valid_minimal.json"
+check_fail "export surfaces Kujo runtime failures" env KUJO_BIN=/usr/bin/false "$SPEC" export-agent-context "$PROJECT_DIR/fixtures/valid_minimal.json"
+check_fail "envelope export surfaces Kujo runtime failures" env KUJO_BIN=/usr/bin/false "$SPEC" export "$PROJECT_DIR/fixtures/valid_minimal.json" --format envelope
+check_fail "export rejects unknown formats" "$SPEC" export-agent-context "$PROJECT_DIR/fixtures/valid_minimal.json" --format unknown
+check_fail "runtime timeout rejects non-numeric values" env SPEC_TIMEOUT=not-a-number "$SPEC" version
+
+# 47. SEC-13: interactive values are serialized as data, not raw YAML syntax.
+check "init-interactive safely serializes quoted and multiline-looking values" bash -c "
+out='${PROJECT_DIR}/_test_interactive_escaping.yml'
+rm -f \"\$out\"
+printf '%s\n' 'interactive-safe' 'goal: with \"quotes\" and # text' 'high' 'one, two' \"\$out\" | '$SPEC' init-interactive >/dev/null
+rc=\$?
+'$SPEC' validate \"\$out\" --quiet || rc=1
+python3 -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d[\"goal\"] == '\''goal: with \"quotes\" and # text'\''; assert d[\"tags\"] == [\"one\", \"two\"]' \"\$out\" || rc=1
+rm -f \"\$out\"
+exit \$rc
+"
+
+# 48. CONTRACT-01: fast batch validation must enforce schema-backed constraints.
+check_fail "validate-all rejects non-string parent_id" bash -c "
+dir='${PROJECT_DIR}/_test_batch_parent_id'
+rm -rf \"\$dir\"; mkdir \"\$dir\"
+printf '%s\n' '{\"name\":\"bad parent\",\"goal\":\"reject it\",\"parent_id\":7}' > \"\$dir/bad.spec.json\"
+'$SPEC' validate-all \"\$dir\" >/dev/null
+rc=\$?
+rm -rf \"\$dir\"
+exit \$rc
+"
+check_fail "validate-all rejects empty acceptance criteria" bash -c "
+dir='${PROJECT_DIR}/_test_batch_empty_ac'
+rm -rf \"\$dir\"; mkdir \"\$dir\"
+printf '%s\n' '{\"name\":\"bad criteria\",\"goal\":\"reject it\",\"acceptance_criteria\":[]}' > \"\$dir/bad.spec.json\"
+'$SPEC' validate-all \"\$dir\" >/dev/null
+rc=\$?
+rm -rf \"\$dir\"
+exit \$rc
+"
+check_fail "validate rejects malformed eval params" bash -c "
+f='${PROJECT_DIR}/_test_bad_eval_params.json'
+printf '%s\n' '{\"name\":\"bad eval\",\"goal\":\"reject it\",\"eval_requirements\":[{\"description\":\"check\",\"params\":[]} ]}' > \"\$f\"
+'$SPEC' validate \"\$f\" --quiet
+rc=\$?
+rm -f \"\$f\"
+exit \$rc
+"
+check "batch commands do not wrap 256 failures into a success exit" bash -c "
+dir='${PROJECT_DIR}/_test_256_failures'
+rm -rf \"\$dir\"; mkdir \"\$dir\"
+python3 -c 'import json,sys,pathlib; p=pathlib.Path(sys.argv[1]); [(p / f\"bad_{i:03}.spec.json\").write_text(json.dumps({\"name\": f\"bad-{i}\"})) for i in range(256)]' \"\$dir\"
+'$SPEC' validate-all \"\$dir\" >/dev/null 2>&1 && rc=1 || rc=0
+'$SPEC' ci \"\$dir\" --jobs 32 >/dev/null 2>&1 && rc=1
+rm -rf \"\$dir\"
+exit \$rc
+"
+
+# 49. SEC-14: graph labels cannot inject graph statements through spec names.
+check "graph escapes untrusted labels" bash -c "
+dir='${PROJECT_DIR}/_test_graph_escape'
+rm -rf \"\$dir\"; mkdir \"\$dir\"
+python3 -c 'import json,sys; json.dump({\"name\": \"quoted \\\" label\\nnode --> injected\", \"goal\": \"graph safely\"}, open(sys.argv[1], \"w\"))' \"\$dir/name.spec.json\"
+out=\$('$SPEC' graph \"\$dir\" --format mermaid)
+rc=\$?
+printf '%s' \"\$out\" | grep -Fq '\\\" label\\nnode' || rc=1
+rm -rf \"\$dir\"
+exit \$rc
+"
+
 # Summary
 report_results "Results"

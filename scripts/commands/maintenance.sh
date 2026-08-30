@@ -210,7 +210,7 @@ PY
 			$fail_fast && [[ "$failed" -gt 0 ]] && echo "  NOTE: fail-fast triggered on first failure"
 			;;
 	esac
-	return $failed
+	[[ "$failed" -eq 0 ]]
 }
 
 spec_cmd_template() {
@@ -295,7 +295,8 @@ spec_cmd_export_unified() {
 			tmp="$(mktemp -t spec_export_env_XXXXXX.json)"
 			trap "rm -f $tmp" RETURN
 			spec_to_json "$f" "$tmp"
-			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format" 2>/dev/null)" || true
+			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format")" || die "Envelope export failed: Kujo runtime returned an error"
+			[[ -n "$payload" ]] || die "Envelope export failed: Kujo runtime produced no output"
 			source_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
 			checksum="$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}')"
 			generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
@@ -347,9 +348,11 @@ spec_cmd_init_interactive() {
 	echo -n "Name: "
 	read -r name
 	[[ -z "$name" ]] && die "Name is required."
+	validate_spec_name "$name"
 
 	echo -n "Goal: "
 	read -r goal
+	[[ -z "$goal" ]] && die "Goal is required."
 
 	echo -n "Priority [medium]: "
 	read -r priority
@@ -371,22 +374,29 @@ spec_cmd_init_interactive() {
 	local uuid; uuid="$(python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
 	local now; now="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || now=""
 
-	# Convert comma-separated tags to YAML array
-	local tags_yaml="[]"
-	if [[ -n "$tags" ]]; then
-		tags_yaml="[$(echo "$tags" | sed 's/, */", "/g' | sed 's/^/"/;s/$/"/')]"
-	fi
+	python3 - "$out" "$name" "$goal" "$uuid" "$now" "$priority" "$tags" <<'PY'
+import json
+import sys
 
-	cat > "$out" <<YMLEOF
-name: "$name"
-goal: "$goal"
-id: "$uuid"
-status: "draft"
-version: "0.1.0"
-created_at: "$now"
-priority: "$priority"
-tags: $tags_yaml
-YMLEOF
+out, name, goal, spec_id, created_at, priority, raw_tags = sys.argv[1:]
+data = {
+    "name": name,
+    "goal": goal,
+    "id": spec_id,
+    "status": "draft",
+    "version": "0.1.0",
+    "created_at": created_at,
+    "priority": priority,
+    "tags": [tag.strip() for tag in raw_tags.split(",") if tag.strip()],
+}
+try:
+    import yaml
+    text = yaml.safe_dump(data, sort_keys=False)
+except ImportError:
+    text = "\n".join(f"{key}: {json.dumps(value)}" for key, value in data.items()) + "\n"
+with open(out, "x", encoding="utf-8") as handle:
+    handle.write(text)
+PY
 
 	echo ""
 	echo "Created: $out"
@@ -548,7 +558,9 @@ spec_cmd_graph() {
 			while [[ $i -lt $idx ]]; do
 				local n="${spec_names[$i]}"
 				local p="${spec_parents[$i]}"
-				echo "    spec$i[\"$n\"]"
+				local escaped_n
+				escaped_n="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$n")"
+				echo "    spec$i[\"$escaped_n\"]"
 				if [[ -n "$p" ]]; then
 					# Find parent index
 					local j=0
@@ -571,7 +583,9 @@ spec_cmd_graph() {
 			local i=0
 			while [[ $i -lt $idx ]]; do
 				local n="${spec_names[$i]}"
-				echo "  spec$i [label=\"$n\"];"
+				local escaped_n
+				escaped_n="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$n")"
+				echo "  spec$i [label=\"$escaped_n\"];"
 				i=$((i + 1))
 			done
 			# Edges

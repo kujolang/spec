@@ -22,6 +22,7 @@ check "kujo.toml present" test -f kujo.toml
 check "README present" test -f README.md
 check "Schema present" test -f schema/spec.schema.json
 check "CLI script present" test -f scripts/spec
+check "Docker runtime downloads require checksum verification" bash -c "grep -q 'KUJO_BIN_SHA256' Dockerfile && grep -q 'sha256sum -c' Dockerfile"
 
 echo ""
 report_results "Results"

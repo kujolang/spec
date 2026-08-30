@@ -18,12 +18,15 @@ RUN apk add --no-cache bash git
 RUN pip install --no-cache-dir pyyaml
 
 # Copy Kujo runtime binary (must be provided at build time)
-# Build with: docker build --build-arg KUJO_BIN_URL=<url> -t kujolang/spec .
+# Build with: docker build --build-arg KUJO_BIN_URL=<url> --build-arg KUJO_BIN_SHA256=<sha256> -t kujolang/spec .
 ARG KUJO_BIN_URL=""
+ARG KUJO_BIN_SHA256=""
 ARG KUJO_BIN_PATH="/usr/local/bin/kujo"
 
 RUN if [ -n "$KUJO_BIN_URL" ]; then \
+		test -n "$KUJO_BIN_SHA256" || { echo "KUJO_BIN_SHA256 is required when KUJO_BIN_URL is set" >&2; exit 1; }; \
 		wget -O "$KUJO_BIN_PATH" "$KUJO_BIN_URL" && \
+		echo "$KUJO_BIN_SHA256  $KUJO_BIN_PATH" | sha256sum -c - && \
 		chmod +x "$KUJO_BIN_PATH"; \
 	else \
 		echo "Warning: KUJO_BIN_URL not set. Kujo runtime must be mounted at runtime."; \

@@ -20,7 +20,7 @@ Symlink trust boundary policy:
 
 ### 3. Input Sanitization (SEC-03 — fixed v0.1.0)
 
-The `--name` parameter in `spec init` is validated against a safe character class (`[a-zA-Z0-9 _-]+`), rejecting quotes, backticks, and other special characters.
+The `--name` parameter in `spec init` and `spec init-interactive` is validated against a safe character class (`[a-zA-Z0-9 _-]+`), rejecting quotes, backticks, and other special characters. Interactive goal and tag values are serialized as data instead of being interpolated into YAML.
 
 ### 4. File Size Limiting
 
@@ -36,6 +36,18 @@ When safe-write mode is enabled (`SPEC_SAFE_WRITE=on` or `auto` in `spec ci` con
 
 - Blocked by default: output paths outside project root (including resolved symlink escapes)
 - Allowed by explicit intent: pass `--unsafe-write` to override for a single command
+
+### 7. Generated Output Safety
+
+Mermaid and DOT graph labels are escaped before untrusted spec names are embedded. Render and export commands fail closed when the Kujo runtime fails or returns no output.
+
+### 8. Conversion Cache Isolation
+
+Conversion caches use a per-user directory with mode `0700`. A symlinked or otherwise unsafe cache directory disables caching for that operation.
+
+### 9. Container Runtime Integrity
+
+Docker builds that download a Kujo runtime with `KUJO_BIN_URL` must also supply `KUJO_BIN_SHA256`; the build verifies the binary before making it executable.
 
 ## Known Limitations
 
