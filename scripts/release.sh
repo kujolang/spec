@@ -29,6 +29,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
+if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+	echo "Error: Tag v$VERSION already exists."
+	exit 1
+fi
+
 echo "=== Spec Release v$VERSION ==="
 echo ""
 
@@ -70,6 +75,61 @@ with open(sys.argv[6], "w") as fh:
 	echo "  Provenance: $provenance_file"
 }
 
+update_release_metadata() {
+	local release_version="$1"
+	local release_date
+	release_date="$(date -u +"%Y-%m-%d")"
+
+	python3 - "$release_version" "$release_date" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+version, release_date = sys.argv[1:]
+
+def replace_once(path, pattern, replacement):
+    file_path = pathlib.Path(path)
+    text = file_path.read_text()
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise SystemExit(f"Expected one version marker in {path}, found {count}")
+    file_path.write_text(updated)
+
+pathlib.Path("VERSION").write_text(version + "\n")
+pathlib.Path("RUNTIME_VERSION").write_text(version + "\n")
+replace_once("scripts/spec", r'^VERSION="[^"]+"$', f'VERSION="{version}"')
+replace_once(
+    "scripts/install.sh",
+    r'^SPEC_VERSION="\$\{SPEC_VERSION:-[^}]+\}"$',
+    f'SPEC_VERSION="${{SPEC_VERSION:-{version}}}"',
+)
+replace_once("kennel.toml", r'^version = "[^"]+"$', f'version = "{version}"')
+replace_once("kujo.toml", r'^version = "[^"]+"$', f'version = "{version}"')
+replace_once("homebrew/spec.rb", r'^  version "[^"]+"$', f'  version "{version}"')
+replace_once(
+    "README.md",
+    r'badge/version-[^-]+-black',
+    f'badge/version-{version}-black',
+)
+
+package_path = pathlib.Path("package.json")
+package = json.loads(package_path.read_text())
+package["version"] = version
+package_path.write_text(json.dumps(package, indent=2) + "\n")
+
+changelog_path = pathlib.Path("CHANGELOG.md")
+changelog = changelog_path.read_text()
+release_heading = f"## [{version}] - {release_date}"
+if release_heading not in changelog:
+    marker = "## [Unreleased]"
+    if changelog.count(marker) != 1:
+        raise SystemExit("Expected exactly one Unreleased changelog heading")
+    changelog = changelog.replace(marker, marker + "\n\n" + release_heading, 1)
+    changelog_path.write_text(changelog)
+PY
+}
+
 # Ensure clean working tree
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
 	echo "Error: Working tree is not clean. Commit or stash changes first."
@@ -106,18 +166,12 @@ else
 fi
 echo ""
 
-# Step 3: Update version in scripts/spec
-echo "3/6 Updating version to $VERSION..."
+# Step 3: Update release metadata
+echo "3/6 Updating release metadata to $VERSION..."
 if [[ "$DRY_RUN" == "true" ]]; then
-	echo "  [DRY RUN] Would update VERSION in scripts/spec"
+	echo "  [DRY RUN] Would update release metadata and changelog"
 else
-	sed -i '' "s/^VERSION=\".*\"/VERSION=\"$VERSION\"/" scripts/spec
-	# Update kennel.toml version
-	sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" kennel.toml
-	# Update RUNTIME_VERSION if it tracks spec version
-	if [[ -f RUNTIME_VERSION ]]; then
-		echo "$VERSION" > RUNTIME_VERSION
-	fi
+	update_release_metadata "$VERSION"
 fi
 echo ""
 
@@ -126,8 +180,13 @@ echo "4/6 Committing version bump..."
 if [[ "$DRY_RUN" == "true" ]]; then
 	echo "  [DRY RUN] Would commit version bump"
 else
-	git add scripts/spec kennel.toml RUNTIME_VERSION 2>/dev/null || true
-	git commit -m "Release v$VERSION"
+	git add CHANGELOG.md README.md VERSION RUNTIME_VERSION homebrew/spec.rb \
+		kennel.toml kujo.toml package.json scripts/install.sh scripts/spec
+	if git diff --cached --quiet; then
+		echo "  Release metadata already matches v$VERSION"
+	else
+		git commit -m "chore: prepare v$VERSION release"
+	fi
 fi
 echo ""
 
@@ -140,8 +199,6 @@ if [[ "$DRY_RUN" == "true" ]]; then
 	rm -rf "$DRY_DIST" 2>/dev/null || true
 else
 	build_release_artifacts "$VERSION" "$PROJECT_DIR/dist"
-	git add dist
-	git commit -m "Release artifacts for v$VERSION"
 fi
 echo ""
 
@@ -150,7 +207,7 @@ echo "6/6 Tagging and pushing..."
 if [[ "$DRY_RUN" == "true" ]]; then
 	echo "  [DRY RUN] Would: git tag v$VERSION && git push && git push --tags"
 else
-	git tag "v$VERSION"
+	git tag -a "v$VERSION" -m "Spec v$VERSION"
 	git push origin main
 	git push origin "v$VERSION"
 fi
