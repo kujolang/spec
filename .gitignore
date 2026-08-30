@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 /test_*.kujo
+/_test_*
 /artifacts/
 /tests/artifacts/
 /spec_results/
