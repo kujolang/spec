@@ -59,6 +59,17 @@ else
 	fi
 fi
 
+# Create the install directory before testing whether it is writable.
+if [[ ! -d "$INSTALL_DIR" ]]; then
+	install_parent="$(dirname "$INSTALL_DIR")"
+	if [[ -d "$install_parent" && -w "$install_parent" ]]; then
+		mkdir -p "$INSTALL_DIR"
+	else
+		echo "Need sudo to create $INSTALL_DIR"
+		sudo mkdir -p "$INSTALL_DIR"
+	fi
+fi
+
 # Copy the spec script to install directory
 if [[ -w "$INSTALL_DIR" ]]; then
 	cp "$SOURCE_REPO/scripts/spec" "$INSTALL_DIR/spec"

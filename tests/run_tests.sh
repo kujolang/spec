@@ -394,7 +394,7 @@ check "validate passes on valid TOML spec" "$SPEC" validate "$PROJECT_DIR/fixtur
 check "validate rejects an empty file with required-field errors" bash -c "
 	empty_file='${PROJECT_DIR}/_test_empty.yml'
 	: > \"\$empty_file\"
-	out=\$(timeout 10 '$SPEC' validate \"\$empty_file\" 2>&1); rc=\$?
+	out=\$(SPEC_TIMEOUT=10 '$SPEC' validate \"\$empty_file\" 2>&1); rc=\$?
 	rm -f \"\$empty_file\"
 	[[ \$rc -eq 1 ]] &&
 	echo \"\$out\" | grep -q 'Missing required field: name' &&
@@ -756,8 +756,10 @@ rm -f \"\$out\"
 printf '%s\n' 'interactive-safe' 'goal: with \"quotes\" and # text' 'high' 'one, two' \"\$out\" | '$SPEC' init-interactive >/dev/null
 rc=\$?
 '$SPEC' validate \"\$out\" --quiet || rc=1
-python3 -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d[\"goal\"] == '\''goal: with \"quotes\" and # text'\''; assert d[\"tags\"] == [\"one\", \"two\"]' \"\$out\" || rc=1
-rm -f \"\$out\"
+json_out='${PROJECT_DIR}/_test_interactive_escaping.json'
+'$SPEC' convert \"\$out\" --to json --output \"\$json_out\" >/dev/null || rc=1
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d[\"goal\"] == '\''goal: with \"quotes\" and # text'\''; assert d[\"tags\"] == [\"one\", \"two\"]' \"\$json_out\" || rc=1
+rm -f \"\$out\" \"\$json_out\"
 exit \$rc
 "
 

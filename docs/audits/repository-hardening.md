@@ -63,6 +63,8 @@ Linux x64, macOS x64, and macOS arm64 runners now download the explicit Kujo v1.
 
 Files: `.github/workflows/ci.yml`, `.github/scripts/install-kujo-runtime.sh`, `.github/kujo-runtime-checksums.txt`, `scripts/supply_chain_policy_check.sh`.
 
+Hosted verification also exposed two portability assumptions: macOS tests used the non-default `timeout` command and imported optional PyYAML, while packaging expected `INSTALL_DIR` to exist. Tests now use Spec's own timeout/conversion contracts and the installer creates its destination safely.
+
 ## Performance & Efficiency
 
 | Measurement | Before | After | Delta |

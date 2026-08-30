@@ -9,6 +9,7 @@
 - Isolated conversion caches by user and rejected symlink cache directories.
 - Required SHA-256 verification when Docker builds download a Kujo runtime binary.
 - Installed the pinned Kujo v1.1.0 release in hosted Linux/macOS CI from repository-owned checksums.
+- Removed hosted-runner assumptions from tests and made installation create a missing destination directory.
 
 ## [1.0.0] - 2026-08-08
 
