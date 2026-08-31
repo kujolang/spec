@@ -1,0 +1,78 @@
+{
+  "name": "Spec v1.0.1 hardening outcome evaluation",
+  "description": "Identical deterministic requirements applied to the v1.0.0 baseline and v1.0.1 current checkout.",
+  "version": "1.0.0",
+  "timeout_seconds": 120,
+  "stop_on_failure": false,
+  "artifact_checksums": true,
+  "tests": [
+    {
+      "name": "minimal version contract",
+      "check": "command_succeeds",
+      "tags": ["minimal", "correctness"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case version_contract"}
+    },
+    {
+      "name": "typical full-schema validation",
+      "check": "command_succeeds",
+      "tags": ["typical", "correctness"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case full_schema_validation"}
+    },
+    {
+      "name": "large 100-file batch",
+      "check": "command_succeeds",
+      "tags": ["large", "performance"],
+      "timeout_seconds": 120,
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case large_batch"}
+    },
+    {
+      "name": "stress 256-failure exit status",
+      "check": "command_succeeds",
+      "tags": ["stress", "reliability"],
+      "timeout_seconds": 300,
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case failure_count_256"}
+    },
+    {
+      "name": "runtime failure fails closed",
+      "check": "command_succeeds",
+      "tags": ["failure", "reliability"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case runtime_failure"}
+    },
+    {
+      "name": "agent context remains useful and bounded",
+      "check": "command_succeeds",
+      "tags": ["agent-facing", "output"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case agent_export"}
+    },
+    {
+      "name": "interactive YAML injection rejected",
+      "check": "command_succeeds",
+      "tags": ["security", "failure"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case interactive_injection"}
+    },
+    {
+      "name": "graph labels are escaped",
+      "check": "command_succeeds",
+      "tags": ["security", "output"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case graph_escaping"}
+    },
+    {
+      "name": "requested initialization format honored",
+      "check": "command_succeeds",
+      "tags": ["correctness", "format"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case requested_format"}
+    },
+    {
+      "name": "cache symlink not followed",
+      "check": "command_succeeds",
+      "tags": ["security", "filesystem"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case cache_symlink"}
+    },
+    {
+      "name": "invalid timeout rejected early",
+      "check": "command_succeeds",
+      "tags": ["configuration", "failure"],
+      "params": {"command": "python3 \"$SPEC_ROOT/checks/hardening-v1.0.1/cases.py\" --target \"$SPEC_TARGET_ROOT\" --case timeout_validation"}
+    }
+  ]
+}

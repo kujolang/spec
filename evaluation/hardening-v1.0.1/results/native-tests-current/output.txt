@@ -1,0 +1,112 @@
+=== Spec Test Suite ===
+
+  PASS: version prints version
+  PASS: version --json matches contract shape
+  PASS: help prints usage
+  PASS: init creates YAML spec
+  PASS: init creates JSON spec
+  PASS: init rejects name with quotes
+  PASS: init rejects name with backticks
+  PASS: init accepts name with hyphens
+  PASS: init --from rejects dangerous name with quotes
+  PASS: init --from json rejects outside-project source
+  PASS: validate passes on valid JSON spec
+  PASS: validate --json matches contract shape
+  PASS: validate fails on spec missing goal
+  PASS: validate fails on spec missing name
+  PASS: validate safely rejects file with quotes in name
+  PASS: validate safely rejects file with semicolons in name
+  PASS: validate rejects path traversal (..)
+  PASS: validate rejects absolute path outside project
+  PASS: validate exits non-zero on outside-project path
+  PASS: validate allows safe relative path
+  PASS: render produces markdown
+  PASS: render blocks outside output path when safe-write is on
+  PASS: render allows outside output path with --unsafe-write
+  PASS: export produces agent context
+  PASS: export dispatch produces JSON
+  PASS: spec export envelope produces metadata contract
+  PASS: spec export envelope with dispatch payload is machine-readable
+  PASS: export dispatch escapes quoted content
+  PASS: validate fails on nonexistent file
+  PASS: spec list finds spec files
+  PASS: spec list --json is valid JSON
+  PASS: spec list --json reports source paths
+  PASS: spec list --json matches contract shape
+  PASS: validate-all passes on project specs
+  PASS: spec ci text mode succeeds
+  PASS: spec ci json mode emits valid JSON
+  PASS: spec ci github mode succeeds
+  PASS: spec ci accepts option-first argument order
+  PASS: spec ci json escapes unusual failure paths
+  PASS: spec ci --max-files truncates scan deterministically
+  PASS: spec ci --fail-fast stops on first failing spec
+  PASS: spec ci --jobs validates all specs in parallel
+  PASS: spec ci --jobs with --max-files keeps deterministic count
+  PASS: spec ci --jobs --fail-fast truncates on first failure
+  PASS: spec graph mermaid mode outputs graph
+  PASS: spec graph dot mode outputs digraph
+  PASS: spec doctor prints diagnostic header
+  PASS: spec changelog with explicit ref works
+  PASS: spec init-interactive creates a valid spec from prompts
+  PASS: spec template create and delete in isolated home
+  PASS: spec template list prints normalized names
+  PASS: spec template create rejects traversal names
+  PASS: spec init rejects traversal template name
+  PASS: spec init loads home template when policy allows
+  PASS: spec init strict template mode blocks home templates
+  PASS: validate --quiet is silent on success
+  PASS: validate passes on valid YAML spec
+  PASS: validate passes on valid TOML spec
+  PASS: validate rejects an empty file with required-field errors
+  PASS: init generates a UUID v4 id
+  PASS: spec search finds high priority specs
+  PASS: spec status shows draft
+  PASS: spec status --set persists update immediately
+  PASS: spec status --set inserts missing YAML status
+  PASS: spec status --set inserts missing TOML status
+  PASS: spec convert YAML to JSON
+  PASS: spec diff reports changed fields
+  PASS: spec export-eval maps eval requirements into checks
+  PASS: spec with parent_id field validates
+  PASS: render output has all sections
+  PASS: export context has required sections
+  PASS: schema is valid JSON Schema
+  PASS: validate --strict accepts all documented top-level schema fields
+  PASS: validate rejects invalid lifecycle status
+  PASS: validate rejects malformed spec id
+  PASS: validate rejects non-numeric estimated_hours
+  PASS: validate rejects more than 100 non-goals
+  PASS: validate rejects non-string array items
+  PASS: validate rejects malformed structured dependencies
+  PASS: validate rejects non-object risks
+  PASS: convert rejects unsupported target format
+  PASS: init template converts to requested format without name override
+  PASS: validate --strict fails on warnings
+  PASS: validate warns on unknown top-level fields in default mode
+  PASS: validate --strict fails on unknown top-level fields
+  PASS: spec export-dispatch produces JSON
+  PASS: validate binary file fails cleanly
+  PASS: validate large spec passes
+  PASS: validate rejects name over 200 chars
+  PASS: validate rejects goal over 5000 chars
+  PASS: validate rejects directory instead of file
+  PASS: validate follows symlink to valid spec
+  PASS: validate rejects symlink resolving outside project
+  PASS: render handles structured dependencies
+  PASS: spec changelog falls back when no tags exist
+  PASS: benchmark writes ci_runtime_ms summary
+  PASS: completion parity script passes
+  PASS: render surfaces Kujo runtime failures
+  PASS: export surfaces Kujo runtime failures
+  PASS: envelope export surfaces Kujo runtime failures
+  PASS: export rejects unknown formats
+  PASS: runtime timeout rejects non-numeric values
+  PASS: init-interactive safely serializes quoted and multiline-looking values
+  PASS: validate-all rejects non-string parent_id
+  PASS: validate-all rejects empty acceptance criteria
+  PASS: validate rejects malformed eval params
+  PASS: batch commands do not wrap 256 failures into a success exit
+  PASS: graph escapes untrusted labels
+
+=== Results: 108 passed, 0 failed ===

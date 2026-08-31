@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-31T03:17:02.232120+00:00",
+  "baseline": {
+    "revision": "11180d8f6af1ed3eea84abb3434dd736fa51293b",
+    "tracked_files": 71,
+    "files_by_category": {
+      "source": 19,
+      "other": 27,
+      "documentation": 20,
+      "test": 5
+    },
+    "text_files": 62,
+    "total_lines": 6912,
+    "nonblank_lines": 5867,
+    "source_files": 19,
+    "source_lines": 3526,
+    "test_lines": 940,
+    "documentation_lines": 1770,
+    "function_definitions": 59,
+    "branch_tokens": 793,
+    "todo_fixme": 0,
+    "largest_text_files": [
+      {
+        "path": "scripts/spec",
+        "lines": 1174
+      },
+      {
+        "path": "tests/run_tests.sh",
+        "lines": 639
+      },
+      {
+        "path": "scripts/commands/maintenance.sh",
+        "lines": 597
+      },
+      {
+        "path": "README.md",
+        "lines": 373
+      },
+      {
+        "path": "schema/spec.schema.json",
+        "lines": 299
+      },
+      {
+        "path": "scripts/spec_helpers.py",
+        "lines": 286
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "lines": 222
+      },
+      {
+        "path": "src/validate.kujo",
+        "lines": 219
+      },
+      {
+        "path": "scripts/release.sh",
+        "lines": 166
+      },
+      {
+        "path": "docs/INTEGRATION_GUIDE.md",
+        "lines": 157
+      }
+    ],
+    "git_archive_tar_bytes": 317440,
+    "git_archive_tar_gzip_bytes": 72339,
+    "direct_dependencies": 0,
+    "package_version": "1.0.0"
+  },
+  "current": {
+    "revision": "be4696b4acbefac39ea3c3645f27eb2bb6410f8e",
+    "tracked_files": 74,
+    "files_by_category": {
+      "other": 28,
+      "source": 20,
+      "documentation": 21,
+      "test": 5
+    },
+    "text_files": 64,
+    "total_lines": 7694,
+    "nonblank_lines": 6552,
+    "source_files": 20,
+    "source_lines": 3965,
+    "test_lines": 1117,
+    "documentation_lines": 1922,
+    "function_definitions": 62,
+    "branch_tokens": 928,
+    "todo_fixme": 0,
+    "largest_text_files": [
+      {
+        "path": "scripts/spec",
+        "lines": 1211
+      },
+      {
+        "path": "tests/run_tests.sh",
+        "lines": 816
+      },
+      {
+        "path": "scripts/commands/maintenance.sh",
+        "lines": 611
+      },
+      {
+        "path": "README.md",
+        "lines": 373
+      },
+      {
+        "path": "scripts/spec_helpers.py",
+        "lines": 370
+      },
+      {
+        "path": "src/validate.kujo",
+        "lines": 369
+      },
+      {
+        "path": "schema/spec.schema.json",
+        "lines": 299
+      },
+      {
+        "path": "scripts/release.sh",
+        "lines": 223
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "lines": 222
+      },
+      {
+        "path": "docs/INTEGRATION_GUIDE.md",
+        "lines": 157
+      }
+    ],
+    "git_archive_tar_bytes": 368640,
+    "git_archive_tar_gzip_bytes": 84305,
+    "direct_dependencies": 0,
+    "package_version": "1.0.1"
+  },
+  "diff": {
+    "commit_count": 11,
+    "changed_files": 31,
+    "additions": 949,
+    "deletions": 159,
+    "binary_files": 0,
+    "commits": [
+      {
+        "sha": "a0a716eff5901fde5711cc33772e932bf85f9d81",
+        "short_sha": "a0a716e",
+        "timestamp": "2026-08-09T18:29:23-04:00",
+        "subject": "test: strengthen spec behavior contracts"
+      },
+      {
+        "sha": "70c5a41514bf914b1500316a4a4393021d11de25",
+        "short_sha": "70c5a41",
+        "timestamp": "2026-08-11T15:54:03-04:00",
+        "subject": "fix: honor requested Spec output formats"
+      },
+      {
+        "sha": "7d5cdd9045fe5ddf38d6e694135b689a45b4c1c8",
+        "short_sha": "7d5cdd9",
+        "timestamp": "2026-08-11T15:54:07-04:00",
+        "subject": "fix: align Spec validation with schema"
+      },
+      {
+        "sha": "d5103347e83289634a6e6423007f8fe52ea24759",
+        "short_sha": "d510334",
+        "timestamp": "2026-08-23T16:52:41-04:00",
+        "subject": "refactor: simplify Spec validation tables"
+      },
+      {
+        "sha": "35159756626525bf3bc2d79bacc10e09f5695dd0",
+        "short_sha": "3515975",
+        "timestamp": "2026-08-30T17:39:29-04:00",
+        "subject": "fix: harden Spec validation and output boundaries"
+      },
+      {
+        "sha": "dbc41a94d89b704a219227aab9412aa313b23d0a",
+        "short_sha": "dbc41a9",
+        "timestamp": "2026-08-30T17:42:13-04:00",
+        "subject": "docs: record repository hardening audit"
+      },
+      {
+        "sha": "82f9128e8e3ef531c4b496dfb74b74aa8d437da2",
+        "short_sha": "82f9128",
+        "timestamp": "2026-08-30T17:44:45-04:00",
+        "subject": "chore: ignore root test scratch files"
+      },
+      {
+        "sha": "1630e0576676d71c66780a85c1993768aa917add",
+        "short_sha": "1630e05",
+        "timestamp": "2026-08-30T18:05:37-04:00",
+        "subject": "ci: install pinned Kujo runtime"
+      },
+      {
+        "sha": "13c17758dc7b28dedba7d68346955ee9f7428e1e",
+        "short_sha": "13c1775",
+        "timestamp": "2026-08-30T18:15:36-04:00",
+        "subject": "fix: make CI checks runner-portable"
+      },
+      {
+        "sha": "35b61da446ec837983a7d444145530394941847c",
+        "short_sha": "35b61da",
+        "timestamp": "2026-08-30T18:49:41-04:00",
+        "subject": "fix: make release automation reproducible"
+      },
+      {
+        "sha": "be4696b4acbefac39ea3c3645f27eb2bb6410f8e",
+        "short_sha": "be4696b",
+        "timestamp": "2026-08-30T19:07:40-04:00",
+        "subject": "chore: prepare v1.0.1 release"
+      }
+    ]
+  }
+}

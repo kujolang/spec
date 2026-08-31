@@ -1,0 +1,1344 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-31T03:40:35.579487+00:00",
+  "evaluation": "Spec v1.0.0 to v1.0.1 hardening",
+  "boundary": {
+    "baseline": {
+      "sha": "11180d8f6af1ed3eea84abb3434dd736fa51293b",
+      "tag": "v1.0.0",
+      "timestamp": "2026-08-08T02:59:03-04:00",
+      "selection_reason": "Immediately preceding official release; the next commit begins the hardening test-contract work."
+    },
+    "current": {
+      "sha": "be4696b4acbefac39ea3c3645f27eb2bb6410f8e",
+      "tag": "v1.0.1",
+      "timestamp": "2026-08-30T19:07:40-04:00"
+    }
+  },
+  "environment": {
+    "platform": "macOS-26.3.1-x86_64-i386-64bit",
+    "machine": "x86_64",
+    "python": "3.10.5 (v3.10.5:f377153967, Jun  6 2022, 12:36:10) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "kujo": "kujo 1.1.0",
+    "git": "git version 2.42.0",
+    "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
+    "physical_cores": "6",
+    "logical_cores": "12",
+    "memory_bytes": "17179869184",
+    "psutil": "7.0.0"
+  },
+  "method": {
+    "warmups_per_target": 3,
+    "measured_runs_default": 10,
+    "measured_runs_startup": 20,
+    "pairing": "baseline/current order alternated within each measured pair",
+    "timer": "Python perf_counter_ns around /usr/bin/time -lp",
+    "rss": "maximum resident set size reported by macOS /usr/bin/time -l",
+    "process_count": "1 ms psutil sampling; lower bound for very short-lived processes"
+  },
+  "runtime_measurements": {
+    "startup_version": {
+      "category": "minimal",
+      "input_count": null,
+      "baseline": {
+        "n": 20,
+        "min_seconds": 0.11126722,
+        "max_seconds": 0.21663537,
+        "mean_seconds": 0.1360912556,
+        "median_seconds": 0.12676014400000002,
+        "stddev_seconds": 0.027282561355809434,
+        "p95_seconds": 0.18713395885,
+        "p99_seconds": 0.21073508776999994,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          69
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "c6153e69de19e1153b523d0d559ddc0cbb2f64102ad280f6512d8823885085c1"
+        ],
+        "median_user_seconds": 0.03,
+        "max_user_seconds": 0.03,
+        "median_system_seconds": 0.02,
+        "max_system_seconds": 0.03,
+        "median_max_rss_bytes": 1503232.0,
+        "max_max_rss_bytes": 1564672,
+        "median_processes_observed": 1.0,
+        "max_processes_observed": 1
+      },
+      "current": {
+        "n": 20,
+        "min_seconds": 0.113606163,
+        "max_seconds": 0.183264161,
+        "mean_seconds": 0.13897320205000002,
+        "median_seconds": 0.1367819955,
+        "stddev_seconds": 0.017985739017819843,
+        "p95_seconds": 0.16472254835000003,
+        "p99_seconds": 0.17955583846999998,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          69
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "ffb9f6d756f801b6d7a1afbb0c696ed52870ea332d7d1922f6366add666b31a8"
+        ],
+        "median_user_seconds": 0.03,
+        "max_user_seconds": 0.03,
+        "median_system_seconds": 0.02,
+        "max_system_seconds": 0.04,
+        "median_max_rss_bytes": 1540096.0,
+        "max_max_rss_bytes": 1597440,
+        "median_processes_observed": 1.0,
+        "max_processes_observed": 1
+      },
+      "median_wall_change_percent": 7.9061534515138945,
+      "p95_wall_change_percent": -11.976132305288415,
+      "median_rss_change_percent": 2.452316076294278,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -1.3090020731567675,
+        15.821062285251575
+      ]
+    },
+    "validate_single": {
+      "category": "typical",
+      "input_count": null,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 2.39428654,
+        "max_seconds": 3.523578893,
+        "mean_seconds": 2.7014196417000003,
+        "median_seconds": 2.5310321140000003,
+        "stddev_seconds": 0.35609622472953556,
+        "p95_seconds": 3.3123282856999996,
+        "p99_seconds": 3.48132877154,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "09c21b5aac2557bbf649848b4b1ac8ab6f7b445171af51890f6658a0a1a722f5"
+        ],
+        "median_user_seconds": 1.495,
+        "max_user_seconds": 1.56,
+        "median_system_seconds": 0.66,
+        "max_system_seconds": 0.7,
+        "median_max_rss_bytes": 11595776.0,
+        "max_max_rss_bytes": 11710464,
+        "median_processes_observed": 18.0,
+        "max_processes_observed": 23
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 2.937654643,
+        "max_seconds": 3.821785088,
+        "mean_seconds": 3.237317109,
+        "median_seconds": 3.118934159,
+        "stddev_seconds": 0.297127144106587,
+        "p95_seconds": 3.7127411365999996,
+        "p99_seconds": 3.79997629772,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "09c21b5aac2557bbf649848b4b1ac8ab6f7b445171af51890f6658a0a1a722f5"
+        ],
+        "median_user_seconds": 1.83,
+        "max_user_seconds": 1.88,
+        "median_system_seconds": 0.665,
+        "max_system_seconds": 0.71,
+        "median_max_rss_bytes": 13895680.0,
+        "max_max_rss_bytes": 14184448,
+        "median_processes_observed": 18.0,
+        "max_processes_observed": 20
+      },
+      "median_wall_change_percent": 23.227759211276442,
+      "p95_wall_change_percent": 12.088561771750234,
+      "median_rss_change_percent": 19.833980925468033,
+      "paired_median_change_bootstrap_95ci_percent": [
+        9.584236240890831,
+        30.43090899220442
+      ]
+    },
+    "agent_export": {
+      "category": "agent-facing",
+      "input_count": null,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 1.461214619,
+        "max_seconds": 2.098809295,
+        "mean_seconds": 1.6625282373,
+        "median_seconds": 1.6059849895,
+        "stddev_seconds": 0.19287662917865794,
+        "p95_seconds": 2.0105879686,
+        "p99_seconds": 2.08116502972,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          996
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "7d84edd4d9ed763faa2b40d8ccd582691461ee0793bde5a1c5b7b57e5ddf4cc3"
+        ],
+        "median_user_seconds": 0.885,
+        "max_user_seconds": 0.91,
+        "median_system_seconds": 0.46,
+        "max_system_seconds": 0.48,
+        "median_max_rss_bytes": 10477568.0,
+        "max_max_rss_bytes": 10743808,
+        "median_processes_observed": 10.5,
+        "max_processes_observed": 18
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 1.503353913,
+        "max_seconds": 1.730698087,
+        "mean_seconds": 1.5802705164000002,
+        "median_seconds": 1.5576750435000002,
+        "stddev_seconds": 0.07565418902760705,
+        "p95_seconds": 1.7156712212499998,
+        "p99_seconds": 1.7276927138499998,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          996
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "7d84edd4d9ed763faa2b40d8ccd582691461ee0793bde5a1c5b7b57e5ddf4cc3"
+        ],
+        "median_user_seconds": 0.88,
+        "max_user_seconds": 0.9,
+        "median_system_seconds": 0.45,
+        "max_system_seconds": 0.48,
+        "median_max_rss_bytes": 10586112.0,
+        "max_max_rss_bytes": 10772480,
+        "median_processes_observed": 12.0,
+        "max_processes_observed": 15
+      },
+      "median_wall_change_percent": -3.0081193981171905,
+      "p95_wall_change_percent": -14.668184230474365,
+      "median_rss_change_percent": 1.035965598123534,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -12.48111482639641,
+        1.9889463240198912
+      ]
+    },
+    "render": {
+      "category": "typical",
+      "input_count": null,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 1.32050668,
+        "max_seconds": 1.581415665,
+        "mean_seconds": 1.4938441708999999,
+        "median_seconds": 1.508315599,
+        "stddev_seconds": 0.08756115351616589,
+        "p95_seconds": 1.5799263692999999,
+        "p99_seconds": 1.58111780586,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          868
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "e42c49500839743c2d923c5b399794cbcecdf192d70f6461aca05961e7eb74e6"
+        ],
+        "median_user_seconds": 0.88,
+        "max_user_seconds": 0.93,
+        "median_system_seconds": 0.455,
+        "max_system_seconds": 0.47,
+        "median_max_rss_bytes": 10778624.0,
+        "max_max_rss_bytes": 11059200,
+        "median_processes_observed": 17.0,
+        "max_processes_observed": 18
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 1.412131961,
+        "max_seconds": 1.727407196,
+        "mean_seconds": 1.5290416453,
+        "median_seconds": 1.502899922,
+        "stddev_seconds": 0.09837797128935022,
+        "p95_seconds": 1.7040542813,
+        "p99_seconds": 1.72273661306,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          868
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "e42c49500839743c2d923c5b399794cbcecdf192d70f6461aca05961e7eb74e6"
+        ],
+        "median_user_seconds": 0.88,
+        "max_user_seconds": 0.93,
+        "median_system_seconds": 0.45,
+        "max_system_seconds": 0.47,
+        "median_max_rss_bytes": 10717184.0,
+        "max_max_rss_bytes": 11022336,
+        "median_processes_observed": 17.0,
+        "max_processes_observed": 18
+      },
+      "median_wall_change_percent": -0.3590546304493789,
+      "p95_wall_change_percent": 7.856563091291148,
+      "median_rss_change_percent": -0.5700171005130154,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -5.41832052122394,
+        10.687937084360556
+      ]
+    },
+    "schema_failure": {
+      "category": "failure",
+      "input_count": null,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 2.26435475,
+        "max_seconds": 2.695619971,
+        "mean_seconds": 2.3908142,
+        "median_seconds": 2.360112269,
+        "stddev_seconds": 0.11761194761082283,
+        "p95_seconds": 2.5799440384,
+        "p99_seconds": 2.6724847844800004,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "09c21b5aac2557bbf649848b4b1ac8ab6f7b445171af51890f6658a0a1a722f5"
+        ],
+        "median_user_seconds": 1.435,
+        "max_user_seconds": 1.48,
+        "median_system_seconds": 0.675,
+        "max_system_seconds": 0.7,
+        "median_max_rss_bytes": 11442176.0,
+        "max_max_rss_bytes": 11689984,
+        "median_processes_observed": 21.5,
+        "max_processes_observed": 25
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 2.421239167,
+        "max_seconds": 2.692718666,
+        "mean_seconds": 2.5476633618999998,
+        "median_seconds": 2.518417534,
+        "stddev_seconds": 0.09440828097035357,
+        "p95_seconds": 2.67249292775,
+        "p99_seconds": 2.6886735183500003,
+        "exit_codes": [
+          1
+        ],
+        "stdout_bytes": [
+          192
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "80694bf6e8a663e48feeba8e1b6e2dba3b66bd2c3aebe100a9a86bb5f16fecd6"
+        ],
+        "median_user_seconds": 1.57,
+        "max_user_seconds": 1.62,
+        "median_system_seconds": 0.67,
+        "max_system_seconds": 0.69,
+        "median_max_rss_bytes": 13844480.0,
+        "max_max_rss_bytes": 14020608,
+        "median_processes_observed": 22.0,
+        "max_processes_observed": 25
+      },
+      "median_wall_change_percent": 6.707531123808589,
+      "p95_wall_change_percent": 3.5872440631462714,
+      "median_rss_change_percent": 20.99516735278325,
+      "paired_median_change_bootstrap_95ci_percent": [
+        3.506867598509611,
+        11.363419237361615
+      ]
+    },
+    "runtime_failure": {
+      "category": "failure",
+      "input_count": null,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 1.281871627,
+        "max_seconds": 1.653442003,
+        "mean_seconds": 1.3754510919,
+        "median_seconds": 1.3389292584999999,
+        "stddev_seconds": 0.11481416760740228,
+        "p95_seconds": 1.57027428055,
+        "p99_seconds": 1.6368084585100002,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          1
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        ],
+        "median_user_seconds": 0.75,
+        "max_user_seconds": 0.8,
+        "median_system_seconds": 0.42,
+        "max_system_seconds": 0.47,
+        "median_max_rss_bytes": 9426944.0,
+        "max_max_rss_bytes": 9506816,
+        "median_processes_observed": 13.0,
+        "max_processes_observed": 15
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 1.18186287,
+        "max_seconds": 1.508933954,
+        "mean_seconds": 1.3233692317,
+        "median_seconds": 1.305212757,
+        "stddev_seconds": 0.0994451040275489,
+        "p95_seconds": 1.49439571535,
+        "p99_seconds": 1.50602630627,
+        "exit_codes": [
+          1
+        ],
+        "stdout_bytes": [
+          0
+        ],
+        "stderr_bytes": [
+          53
+        ],
+        "stdout_sha256": [
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ],
+        "median_user_seconds": 0.735,
+        "max_user_seconds": 0.79,
+        "median_system_seconds": 0.405,
+        "max_system_seconds": 0.42,
+        "median_max_rss_bytes": 9422848.0,
+        "max_max_rss_bytes": 9543680,
+        "median_processes_observed": 12.0,
+        "max_processes_observed": 15
+      },
+      "median_wall_change_percent": -2.518168998545328,
+      "p95_wall_change_percent": -4.832185443005728,
+      "median_rss_change_percent": -0.043449923962633065,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -8.581212723555032,
+        0.806158935008261
+      ]
+    },
+    "validate_all_1": {
+      "category": "scaling",
+      "input_count": 1,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 0.721770684,
+        "max_seconds": 0.885047717,
+        "mean_seconds": 0.7849716282,
+        "median_seconds": 0.7733924834999999,
+        "stddev_seconds": 0.048308088371383215,
+        "p95_seconds": 0.8593573074499999,
+        "p99_seconds": 0.87990963509,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          44
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "06208a9558f2ddce62440b9dc056d1f5a4ac9f5fbff8544a00460cf0d309954f"
+        ],
+        "median_user_seconds": 0.43,
+        "max_user_seconds": 0.45,
+        "median_system_seconds": 0.24,
+        "max_system_seconds": 0.26,
+        "median_max_rss_bytes": 10244096.0,
+        "max_max_rss_bytes": 10371072,
+        "median_processes_observed": 8.0,
+        "max_processes_observed": 8
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 0.760955691,
+        "max_seconds": 0.869218837,
+        "mean_seconds": 0.8063395516,
+        "median_seconds": 0.7992007004999999,
+        "stddev_seconds": 0.033503972686303195,
+        "p95_seconds": 0.86154152155,
+        "p99_seconds": 0.86768337391,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          44
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "06208a9558f2ddce62440b9dc056d1f5a4ac9f5fbff8544a00460cf0d309954f"
+        ],
+        "median_user_seconds": 0.44,
+        "max_user_seconds": 0.45,
+        "median_system_seconds": 0.25,
+        "max_system_seconds": 0.26,
+        "median_max_rss_bytes": 10551296.0,
+        "max_max_rss_bytes": 10715136,
+        "median_processes_observed": 8.0,
+        "max_processes_observed": 8
+      },
+      "median_wall_change_percent": 3.3370142005006995,
+      "p95_wall_change_percent": 0.25416832801263056,
+      "median_rss_change_percent": 2.9988004798080765,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -2.1113192656420976,
+        8.221800063117858
+      ]
+    },
+    "validate_all_10": {
+      "category": "scaling",
+      "input_count": 10,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 3.878338908,
+        "max_seconds": 4.857550292,
+        "mean_seconds": 4.1787633301,
+        "median_seconds": 4.1144919575,
+        "stddev_seconds": 0.269298721613319,
+        "p95_seconds": 4.6103110651999994,
+        "p99_seconds": 4.8081024466399995,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "2bce49937b6b32af6eaf3c5e590566493d4ccf8e0d0b0543824f17c7a50b1374"
+        ],
+        "median_user_seconds": 2.575,
+        "max_user_seconds": 2.68,
+        "median_system_seconds": 1.21,
+        "max_system_seconds": 1.25,
+        "median_max_rss_bytes": 10223616.0,
+        "max_max_rss_bytes": 10305536,
+        "median_processes_observed": 44.0,
+        "max_processes_observed": 44
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 0.689751045,
+        "max_seconds": 0.898580111,
+        "mean_seconds": 0.7820355849,
+        "median_seconds": 0.7751089015,
+        "stddev_seconds": 0.05554475631747884,
+        "p95_seconds": 0.8673353820499999,
+        "p99_seconds": 0.89233116521,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "2bce49937b6b32af6eaf3c5e590566493d4ccf8e0d0b0543824f17c7a50b1374"
+        ],
+        "median_user_seconds": 0.43,
+        "max_user_seconds": 0.46,
+        "median_system_seconds": 0.25,
+        "max_system_seconds": 0.26,
+        "median_max_rss_bytes": 10645504.0,
+        "max_max_rss_bytes": 10686464,
+        "median_processes_observed": 8.0,
+        "max_processes_observed": 8
+      },
+      "median_wall_change_percent": -81.16149188025238,
+      "p95_wall_change_percent": -81.18705289547802,
+      "median_rss_change_percent": 4.126602564102564,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -82.5213030697513,
+        -80.06049274022276
+      ]
+    },
+    "validate_all_50": {
+      "category": "scaling",
+      "input_count": 50,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 18.786689814,
+        "max_seconds": 22.859786913,
+        "mean_seconds": 20.7109865172,
+        "median_seconds": 20.8593357205,
+        "stddev_seconds": 1.1046315984720656,
+        "p95_seconds": 22.213673772,
+        "p99_seconds": 22.7305642848,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "b317869e074449a2a8fc7ae5e2b0e5a5a7b6d72a0f49abb59254c63a8bbe431a"
+        ],
+        "median_user_seconds": 12.780000000000001,
+        "max_user_seconds": 13.5,
+        "median_system_seconds": 5.865,
+        "max_system_seconds": 6.32,
+        "median_max_rss_bytes": 10313728.0,
+        "max_max_rss_bytes": 10420224,
+        "median_processes_observed": 202.5,
+        "max_processes_observed": 204
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 0.763142262,
+        "max_seconds": 1.082838229,
+        "mean_seconds": 0.9136664646,
+        "median_seconds": 0.9130495175,
+        "stddev_seconds": 0.11079209939880154,
+        "p95_seconds": 1.0636327519,
+        "p99_seconds": 1.07899713358,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          46
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "b317869e074449a2a8fc7ae5e2b0e5a5a7b6d72a0f49abb59254c63a8bbe431a"
+        ],
+        "median_user_seconds": 0.47,
+        "max_user_seconds": 0.48,
+        "median_system_seconds": 0.27,
+        "max_system_seconds": 0.29,
+        "median_max_rss_bytes": 10641408.0,
+        "max_max_rss_bytes": 10711040,
+        "median_processes_observed": 8.0,
+        "max_processes_observed": 8
+      },
+      "median_wall_change_percent": -95.62282553129111,
+      "p95_wall_change_percent": -95.21181069454305,
+      "median_rss_change_percent": 3.177124702144559,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -96.03464112804068,
+        -95.10159597314416
+      ]
+    },
+    "validate_all_100": {
+      "category": "large",
+      "input_count": 100,
+      "baseline": {
+        "n": 10,
+        "min_seconds": 36.211620516,
+        "max_seconds": 44.852716659,
+        "mean_seconds": 40.5826917438,
+        "median_seconds": 40.121190993499994,
+        "stddev_seconds": 3.0859817948645873,
+        "p95_seconds": 44.42348750025,
+        "p99_seconds": 44.76687082725,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          48
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "861cc74f45688c2e064b11780d75d735c58d1e2f2143b0d992ee35ec59a6f5e0"
+        ],
+        "median_user_seconds": 25.09,
+        "max_user_seconds": 26.64,
+        "median_system_seconds": 11.260000000000002,
+        "max_system_seconds": 12.02,
+        "median_max_rss_bytes": 10346496.0,
+        "max_max_rss_bytes": 10485760,
+        "median_processes_observed": 400.0,
+        "max_processes_observed": 404
+      },
+      "current": {
+        "n": 10,
+        "min_seconds": 0.738749844,
+        "max_seconds": 1.285129458,
+        "mean_seconds": 0.9453624401999999,
+        "median_seconds": 0.930468823,
+        "stddev_seconds": 0.14783741055263222,
+        "p95_seconds": 1.1769495529499996,
+        "p99_seconds": 1.26349347699,
+        "exit_codes": [
+          0
+        ],
+        "stdout_bytes": [
+          48
+        ],
+        "stderr_bytes": [
+          0
+        ],
+        "stdout_sha256": [
+          "861cc74f45688c2e064b11780d75d735c58d1e2f2143b0d992ee35ec59a6f5e0"
+        ],
+        "median_user_seconds": 0.5,
+        "max_user_seconds": 0.5,
+        "median_system_seconds": 0.28,
+        "max_system_seconds": 0.3,
+        "median_max_rss_bytes": 10676224.0,
+        "max_max_rss_bytes": 10739712,
+        "median_processes_observed": 8.0,
+        "max_processes_observed": 8
+      },
+      "median_wall_change_percent": -97.68085443138828,
+      "p95_wall_change_percent": -97.35061423769717,
+      "median_rss_change_percent": 3.186856690419636,
+      "paired_median_change_bootstrap_95ci_percent": [
+        -97.86967180494543,
+        -97.46280773378378
+      ]
+    }
+  },
+  "kujo_eval": {
+    "baseline": {
+      "passed": 3,
+      "failed": 8,
+      "skipped": 0,
+      "total": 11,
+      "derived_pass_rate_percent": 27.27272727272727,
+      "duration_ms": 100503,
+      "tests": [
+        {
+          "name": "minimal version contract",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "version_contract",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 69,
+            "stdout_preview": "{\"version\": \"1.0.0\", \"contract\": \"1.0.0\", \"schema_version\": \"1.0.0\"}\n"
+          }
+        },
+        {
+          "name": "typical full-schema validation",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "full_schema_validation",
+            "exit_code": 1,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 202,
+            "stdout_preview": "{\"errors\": [], \"valid\": false, \"warnings\": [\"Unknown top-level field: updated_at\", \"Unknown top-level field: estimated_hours\", \"Unknown top-level field: children\", \"Unknown top-level field: metadata\"]}\n"
+          }
+        },
+        {
+          "name": "large 100-file batch",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "large_batch",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 48,
+            "stdout_preview": "validate --all: 100 passed, 0 failed, 100 total\n"
+          }
+        },
+        {
+          "name": "stress 256-failure exit status",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "failure_count_256",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 48,
+            "stdout_preview": "validate --all: 0 passed, 256 failed, 256 total\n"
+          }
+        },
+        {
+          "name": "runtime failure fails closed",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "runtime_failure",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 1,
+            "stdout_preview": "\n"
+          }
+        },
+        {
+          "name": "agent context remains useful and bounded",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "agent_export",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 434,
+            "stdout_preview": "## Task: Hardening evaluation\n\n### Goal\nVerify deterministic Spec behavior\n\n**Status:** ready | **Priority:** medium\n\n### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n1. The behavior matches the published contract\n\n### Priority\n**medium** priority\n\n---\n\n**Instructions:** Read context before starting. Understand goal and scope. Verify acceptance c"
+          }
+        },
+        {
+          "name": "interactive YAML injection rejected",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "interactive_injection",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 228,
+            "stdout_preview": "=== Spec Interactive Creator ===\nPress Enter to accept defaults.\n\nName: Goal: Priority [medium]: Tags (comma-separated): Output file [spec.yml]: \nCreated: interactive.spec.yml\nRun 'spec validate interactive.spec.yml' to verify.\n"
+          }
+        },
+        {
+          "name": "graph labels are escaped",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "graph_escaping",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 63,
+            "stdout_preview": "```mermaid\ngraph TD\n    spec0[\"safe\"]\n    injected[\"node\"]\n```\n"
+          }
+        },
+        {
+          "name": "requested initialization format honored",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "requested_format",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 54,
+            "stdout_preview": "Created (from template:evaluation): created.spec.json\n"
+          }
+        },
+        {
+          "name": "cache symlink not followed",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "cache_symlink",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 53,
+            "stdout_preview": "Validating: cache-input.spec.yml\nPASS: Spec is valid\n"
+          }
+        },
+        {
+          "name": "invalid timeout rejected early",
+          "passed": false,
+          "message": "Command failed with exit code 1",
+          "case_result": {
+            "case": "timeout_validation",
+            "exit_code": 0,
+            "passed": false,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 69,
+            "stdout_preview": "{\"version\": \"1.0.0\", \"contract\": \"1.0.0\", \"schema_version\": \"1.0.0\"}\n"
+          }
+        }
+      ]
+    },
+    "current": {
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "total": 11,
+      "derived_pass_rate_percent": 100.0,
+      "duration_ms": 10906,
+      "tests": [
+        {
+          "name": "minimal version contract",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "version_contract",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 69,
+            "stdout_preview": "{\"version\": \"1.0.1\", \"contract\": \"1.0.0\", \"schema_version\": \"1.0.0\"}\n"
+          }
+        },
+        {
+          "name": "typical full-schema validation",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "full_schema_validation",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 46,
+            "stdout_preview": "{\"errors\": [], \"valid\": true, \"warnings\": []}\n"
+          }
+        },
+        {
+          "name": "large 100-file batch",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "large_batch",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 48,
+            "stdout_preview": "validate --all: 100 passed, 0 failed, 100 total\n"
+          }
+        },
+        {
+          "name": "stress 256-failure exit status",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "failure_count_256",
+            "exit_code": 1,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 48,
+            "stdout_preview": "validate --all: 0 passed, 256 failed, 256 total\n"
+          }
+        },
+        {
+          "name": "runtime failure fails closed",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "runtime_failure",
+            "exit_code": 1,
+            "passed": true,
+            "stderr_bytes": 53,
+            "stderr_preview": "Error: Render failed: Kujo runtime returned an error\n",
+            "stdout_bytes": 0,
+            "stdout_preview": ""
+          }
+        },
+        {
+          "name": "agent context remains useful and bounded",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "agent_export",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 434,
+            "stdout_preview": "## Task: Hardening evaluation\n\n### Goal\nVerify deterministic Spec behavior\n\n**Status:** ready | **Priority:** medium\n\n### Acceptance Criteria (Definition of Done)\nYour work is complete ONLY when ALL of these are true:\n\n1. The behavior matches the published contract\n\n### Priority\n**medium** priority\n\n---\n\n**Instructions:** Read context before starting. Understand goal and scope. Verify acceptance c"
+          }
+        },
+        {
+          "name": "interactive YAML injection rejected",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "interactive_injection",
+            "exit_code": 1,
+            "passed": true,
+            "stderr_bytes": 125,
+            "stderr_preview": "Error: Invalid name: 'unsafe\": injected: true #'. Names may only contain letters, numbers, spaces, underscores, and hyphens.\n",
+            "stdout_bytes": 72,
+            "stdout_preview": "=== Spec Interactive Creator ===\nPress Enter to accept defaults.\n\nName: "
+          }
+        },
+        {
+          "name": "graph labels are escaped",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "graph_escaping",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 66,
+            "stdout_preview": "```mermaid\ngraph TD\n    spec0[\"safe\\\"]\\n    injected[\\\"node\"]\n```\n"
+          }
+        },
+        {
+          "name": "requested initialization format honored",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "requested_format",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 54,
+            "stdout_preview": "Created (from template:evaluation): created.spec.json\n"
+          }
+        },
+        {
+          "name": "cache symlink not followed",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "cache_symlink",
+            "exit_code": 0,
+            "passed": true,
+            "stderr_bytes": 0,
+            "stderr_preview": "",
+            "stdout_bytes": 53,
+            "stdout_preview": "Validating: cache-input.spec.yml\nPASS: Spec is valid\n"
+          }
+        },
+        {
+          "name": "invalid timeout rejected early",
+          "passed": true,
+          "message": "Command succeeded (exit 0)",
+          "case_result": {
+            "case": "timeout_validation",
+            "exit_code": 1,
+            "passed": true,
+            "stderr_bytes": 57,
+            "stderr_preview": "Error: SPEC_TIMEOUT must be a positive integer (seconds)\n",
+            "stdout_bytes": 0,
+            "stdout_preview": ""
+          }
+        }
+      ]
+    },
+    "derived_pass_rate_change_points": 72.72727272727273,
+    "manifest_verification": {
+      "baseline": true,
+      "current": true,
+      "verified_files_each": 7
+    }
+  },
+  "native_tests": {
+    "baseline": {
+      "passed": 87,
+      "failed": 0,
+      "total": 87
+    },
+    "current": {
+      "passed": 108,
+      "failed": 0,
+      "total": 108
+    },
+    "note": "Suite sizes differ because tests were added; these are release-specific reliability checks, not a shared-workload score."
+  },
+  "static_metrics": {
+    "schema_version": 1,
+    "generated_at": "2026-08-31T03:17:02.232120+00:00",
+    "baseline": {
+      "revision": "11180d8f6af1ed3eea84abb3434dd736fa51293b",
+      "tracked_files": 71,
+      "files_by_category": {
+        "source": 19,
+        "other": 27,
+        "documentation": 20,
+        "test": 5
+      },
+      "text_files": 62,
+      "total_lines": 6912,
+      "nonblank_lines": 5867,
+      "source_files": 19,
+      "source_lines": 3526,
+      "test_lines": 940,
+      "documentation_lines": 1770,
+      "function_definitions": 59,
+      "branch_tokens": 793,
+      "todo_fixme": 0,
+      "largest_text_files": [
+        {
+          "path": "scripts/spec",
+          "lines": 1174
+        },
+        {
+          "path": "tests/run_tests.sh",
+          "lines": 639
+        },
+        {
+          "path": "scripts/commands/maintenance.sh",
+          "lines": 597
+        },
+        {
+          "path": "README.md",
+          "lines": 373
+        },
+        {
+          "path": "schema/spec.schema.json",
+          "lines": 299
+        },
+        {
+          "path": "scripts/spec_helpers.py",
+          "lines": 286
+        },
+        {
+          "path": "CONTRIBUTING.md",
+          "lines": 222
+        },
+        {
+          "path": "src/validate.kujo",
+          "lines": 219
+        },
+        {
+          "path": "scripts/release.sh",
+          "lines": 166
+        },
+        {
+          "path": "docs/INTEGRATION_GUIDE.md",
+          "lines": 157
+        }
+      ],
+      "git_archive_tar_bytes": 317440,
+      "git_archive_tar_gzip_bytes": 72339,
+      "direct_dependencies": 0,
+      "package_version": "1.0.0"
+    },
+    "current": {
+      "revision": "be4696b4acbefac39ea3c3645f27eb2bb6410f8e",
+      "tracked_files": 74,
+      "files_by_category": {
+        "other": 28,
+        "source": 20,
+        "documentation": 21,
+        "test": 5
+      },
+      "text_files": 64,
+      "total_lines": 7694,
+      "nonblank_lines": 6552,
+      "source_files": 20,
+      "source_lines": 3965,
+      "test_lines": 1117,
+      "documentation_lines": 1922,
+      "function_definitions": 62,
+      "branch_tokens": 928,
+      "todo_fixme": 0,
+      "largest_text_files": [
+        {
+          "path": "scripts/spec",
+          "lines": 1211
+        },
+        {
+          "path": "tests/run_tests.sh",
+          "lines": 816
+        },
+        {
+          "path": "scripts/commands/maintenance.sh",
+          "lines": 611
+        },
+        {
+          "path": "README.md",
+          "lines": 373
+        },
+        {
+          "path": "scripts/spec_helpers.py",
+          "lines": 370
+        },
+        {
+          "path": "src/validate.kujo",
+          "lines": 369
+        },
+        {
+          "path": "schema/spec.schema.json",
+          "lines": 299
+        },
+        {
+          "path": "scripts/release.sh",
+          "lines": 223
+        },
+        {
+          "path": "CONTRIBUTING.md",
+          "lines": 222
+        },
+        {
+          "path": "docs/INTEGRATION_GUIDE.md",
+          "lines": 157
+        }
+      ],
+      "git_archive_tar_bytes": 368640,
+      "git_archive_tar_gzip_bytes": 84305,
+      "direct_dependencies": 0,
+      "package_version": "1.0.1"
+    },
+    "diff": {
+      "commit_count": 11,
+      "changed_files": 31,
+      "additions": 949,
+      "deletions": 159,
+      "binary_files": 0,
+      "commits": [
+        {
+          "sha": "a0a716eff5901fde5711cc33772e932bf85f9d81",
+          "short_sha": "a0a716e",
+          "timestamp": "2026-08-09T18:29:23-04:00",
+          "subject": "test: strengthen spec behavior contracts"
+        },
+        {
+          "sha": "70c5a41514bf914b1500316a4a4393021d11de25",
+          "short_sha": "70c5a41",
+          "timestamp": "2026-08-11T15:54:03-04:00",
+          "subject": "fix: honor requested Spec output formats"
+        },
+        {
+          "sha": "7d5cdd9045fe5ddf38d6e694135b689a45b4c1c8",
+          "short_sha": "7d5cdd9",
+          "timestamp": "2026-08-11T15:54:07-04:00",
+          "subject": "fix: align Spec validation with schema"
+        },
+        {
+          "sha": "d5103347e83289634a6e6423007f8fe52ea24759",
+          "short_sha": "d510334",
+          "timestamp": "2026-08-23T16:52:41-04:00",
+          "subject": "refactor: simplify Spec validation tables"
+        },
+        {
+          "sha": "35159756626525bf3bc2d79bacc10e09f5695dd0",
+          "short_sha": "3515975",
+          "timestamp": "2026-08-30T17:39:29-04:00",
+          "subject": "fix: harden Spec validation and output boundaries"
+        },
+        {
+          "sha": "dbc41a94d89b704a219227aab9412aa313b23d0a",
+          "short_sha": "dbc41a9",
+          "timestamp": "2026-08-30T17:42:13-04:00",
+          "subject": "docs: record repository hardening audit"
+        },
+        {
+          "sha": "82f9128e8e3ef531c4b496dfb74b74aa8d437da2",
+          "short_sha": "82f9128",
+          "timestamp": "2026-08-30T17:44:45-04:00",
+          "subject": "chore: ignore root test scratch files"
+        },
+        {
+          "sha": "1630e0576676d71c66780a85c1993768aa917add",
+          "short_sha": "1630e05",
+          "timestamp": "2026-08-30T18:05:37-04:00",
+          "subject": "ci: install pinned Kujo runtime"
+        },
+        {
+          "sha": "13c17758dc7b28dedba7d68346955ee9f7428e1e",
+          "short_sha": "13c1775",
+          "timestamp": "2026-08-30T18:15:36-04:00",
+          "subject": "fix: make CI checks runner-portable"
+        },
+        {
+          "sha": "35b61da446ec837983a7d444145530394941847c",
+          "short_sha": "35b61da",
+          "timestamp": "2026-08-30T18:49:41-04:00",
+          "subject": "fix: make release automation reproducible"
+        },
+        {
+          "sha": "be4696b4acbefac39ea3c3645f27eb2bb6410f8e",
+          "short_sha": "be4696b",
+          "timestamp": "2026-08-30T19:07:40-04:00",
+          "subject": "chore: prepare v1.0.1 release"
+        }
+      ]
+    }
+  },
+  "token_and_cost": {
+    "llm_calls": 0,
+    "measured_tokens": null,
+    "estimated_cost": null,
+    "reason": "Spec is deterministic local tooling and the tested paths do not call an LLM. Agent-facing output bytes were measured instead."
+  },
+  "regressions": [
+    {
+      "metric": "single-file validation median wall time",
+      "baseline": 2.5310321140000003,
+      "current": 3.118934159,
+      "change_percent": 23.227759211276442,
+      "severity": "low"
+    },
+    {
+      "metric": "single-file validation median maximum RSS",
+      "baseline": 11595776.0,
+      "current": 13895680.0,
+      "change_percent": 19.833980925468033,
+      "severity": "low"
+    },
+    {
+      "metric": "compressed source archive size",
+      "baseline": 72339,
+      "current": 84305,
+      "change_percent": 16.541561260177772,
+      "severity": "low"
+    }
+  ],
+  "conclusion": {
+    "answer": "YES",
+    "basis": "Shared deterministic evaluation success rose from 3/11 to 11/11 while 100-file validation median fell from about 40.1 seconds to 0.93 seconds. Low-severity single-file latency, RSS, and repository-size regressions are explicitly retained."
+  }
+}
