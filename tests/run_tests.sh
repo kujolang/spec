@@ -174,7 +174,7 @@ check "spec list --json is valid JSON" bash -c "
 
 # 18a. FEAT-01: spec list --json reports original spec source paths
 check "spec list --json reports source paths" bash -c "
-	'$SPEC' list '$PROJECT_DIR/examples' --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d) >= 1; assert all(\"/examples/\" in x[\"file\"] or x[\"file\"].startswith(\"examples/\") for x in d); assert all(\"/tmp\" not in x[\"file\"] for x in d)'
+    '$SPEC' list '$PROJECT_DIR/examples' --json | python3 -c 'import json,sys; from pathlib import Path; root=Path(sys.argv[1]).resolve(); expected={str(p.resolve()) for p in root.glob(\"*.spec.yml\")}; rows=json.load(sys.stdin); actual={str(Path(row[\"file\"]).resolve()) for row in rows}; assert expected; assert actual == expected; assert len(rows) == len(expected)' '$PROJECT_DIR/examples'
 "
 
 # 18b. TEST-JSON: spec list --json strict object shape
