@@ -5,7 +5,7 @@ class KujoSpec < Formula
   # checksum + provenance metadata (see docs/RELEASE_ARTIFACT_POLICY.md).
   head "https://github.com/kujolang/spec.git", branch: "main"
   license "MIT"
-  version "1.0.1"
+  version "1.0.2"
 
   depends_on "python@3.11"
 

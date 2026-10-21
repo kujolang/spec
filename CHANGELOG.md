@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-21
+
+- Update Node.js requirements for package and release tooling.
+- Preserve task-contract, safe-write, path-boundary, completion, and export compatibility.
+
 ## [1.0.1] - 2026-08-30
 
 - Hardened interactive YAML creation and graph-label escaping for untrusted spec content.
