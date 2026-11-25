@@ -525,7 +525,7 @@ spec_cmd_graph() {
 
 	# Build a graph from spec parent_id relationships
 	local tmpdir; tmpdir="$(mktemp -d)"
-	trap 'rm -rf -- "$tmpdir"' RETURN
+	trap "$(printf 'rm -rf -- %q' "$tmpdir")" RETURN
 	local json_files=()
 	local f jf
 	while IFS= read -r f; do

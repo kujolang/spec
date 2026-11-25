@@ -845,7 +845,7 @@ with tempfile.TemporaryDirectory(prefix="_test_metadata_", dir=project) as tmp:
     assert 'spec2[' + json.dumps(docs[2]["name"]) + ']' in mermaid
     assert "spec0 --> spec2" in mermaid and "spec1 --> spec2" not in mermaid
     assert "spec0 -> spec2;" in dot and "spec1 -> spec2;" not in dot
-    assert 'Child "quoted"' in run("search", "--tag", "speed", "--query", "CHILD")
+    assert 'Child "quoted"' in run("search", "--priority", "high", "--query", "CHILD")
     assert "AC items:   2" in run("info", "2.spec.json")
     assert json.loads(run("info", "2.spec.json", "--json"))["acceptance_criteria"] == 2
 
