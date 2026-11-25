@@ -88,7 +88,6 @@ spec_cmd_ci() {
 		ci_tmp="$(mktemp -d -t spec_ci_XXXXXX)"
 		fail_marker="$ci_tmp/fail.marker"
 		local pids=()
-		local idx=0
 		local launched=0
 		local f idx_this f_this
 
@@ -99,7 +98,7 @@ spec_cmd_ci() {
 				break
 			fi
 
-			idx_this="$idx"
+			idx_this="$launched"
 			f_this="$f"
 			(
 				if validate_file_quiet "$f_this" "$strict"; then
@@ -110,12 +109,10 @@ spec_cmd_ci() {
 						: > "$fail_marker"
 					fi
 				fi
-				echo "$f_this" > "$ci_tmp/$idx_this.file"
 			) &
 
 			pids+=("$!")
 			launched=$((launched + 1))
-			idx=$((idx + 1))
 
 			if [[ "${#pids[@]}" -ge "$jobs" ]]; then
 				wait "${pids[0]}" 2>/dev/null || true
@@ -128,21 +125,19 @@ spec_cmd_ci() {
 			wait "$pid" 2>/dev/null || true
 		done
 
-		idx=0
-		while [[ "$idx" -lt "$launched" ]]; do
-			f_this="$(cat "$ci_tmp/$idx.file" 2>/dev/null || echo "")"
-			local state
-			state="$(cat "$ci_tmp/$idx.result" 2>/dev/null || echo "fail")"
-			if [[ -n "$f_this" ]]; then
-				total=$((total + 1))
-				if [[ "$state" == "pass" ]]; then
-					passed=$((passed + 1))
-				else
-					failed=$((failed + 1))
-					failures+=("$f_this")
-				fi
+		local idx state
+		for ((idx=0; idx<launched; idx++)); do
+			state=""
+			if [[ -f "$ci_tmp/$idx.result" ]]; then
+				IFS= read -r state < "$ci_tmp/$idx.result" || state=""
 			fi
-			idx=$((idx + 1))
+			total=$((total + 1))
+			if [[ "$state" == "pass" ]]; then
+				passed=$((passed + 1))
+			else
+				failed=$((failed + 1))
+				failures+=("${scan_files[$idx]}")
+			fi
 		done
 
 		if [[ "$launched" -lt "${#scan_files[@]}" ]]; then
@@ -530,81 +525,19 @@ spec_cmd_graph() {
 
 	# Build a graph from spec parent_id relationships
 	local tmpdir; tmpdir="$(mktemp -d)"
-	trap "rm -rf $tmpdir" RETURN
-	local idx=0
-	local spec_names=()
-	local spec_parents=()
-	local spec_ids=()
-
+	trap 'rm -rf -- "$tmpdir"' RETURN
+	local json_files=()
+	local f jf
 	while IFS= read -r f; do
 		[[ -z "$f" ]] && continue
-		local jf="$tmpdir/$(printf '%04d' $idx).json"
+		jf="$tmpdir/${#json_files[@]}.json"
 		spec_to_json "$f" "$jf" 2>/dev/null || continue
-		local name pid sid
-		name="$(python3 "$HELPER" get "$jf" name "?" 2>/dev/null)" || name="?"
-		pid="$(python3 "$HELPER" get "$jf" parent_id "" 2>/dev/null)" || pid=""
-		sid="$(python3 "$HELPER" get "$jf" id "" 2>/dev/null)" || sid=""
-		spec_names+=("$name")
-		spec_parents+=("$pid")
-		spec_ids+=("$sid")
-		idx=$((idx + 1))
+		json_files+=("$jf")
 	done <<< "$files"
 
 	case "$format" in
-		mermaid)
-			echo '```mermaid'
-			echo 'graph TD'
-			local i=0
-			while [[ $i -lt $idx ]]; do
-				local n="${spec_names[$i]}"
-				local p="${spec_parents[$i]}"
-				local escaped_n
-				escaped_n="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$n")"
-				echo "    spec$i[\"$escaped_n\"]"
-				if [[ -n "$p" ]]; then
-					# Find parent index
-					local j=0
-					while [[ $j -lt $idx ]]; do
-						if [[ "${spec_ids[$j]}" == "$p" ]]; then
-							echo "    spec$j --> spec$i"
-							break
-						fi
-						j=$((j + 1))
-					done
-				fi
-				i=$((i + 1))
-			done
-			echo '```'
-			;;
-		dot)
-			echo 'digraph Specs {'
-			echo '  rankdir=TB;'
-			echo '  node [shape=box, style=rounded];'
-			local i=0
-			while [[ $i -lt $idx ]]; do
-				local n="${spec_names[$i]}"
-				local escaped_n
-				escaped_n="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$n")"
-				echo "  spec$i [label=\"$escaped_n\"];"
-				i=$((i + 1))
-			done
-			# Edges
-			i=0
-			while [[ $i -lt $idx ]]; do
-				local p="${spec_parents[$i]}"
-				if [[ -n "$p" ]]; then
-					local j=0
-					while [[ $j -lt $idx ]]; do
-						if [[ "${spec_ids[$j]}" == "$p" ]]; then
-							echo "  spec$j -> spec$i;"
-							break
-						fi
-						j=$((j + 1))
-					done
-				fi
-				i=$((i + 1))
-			done
-			echo '}'
+		mermaid|dot)
+			printf '%s\0' "${json_files[@]+"${json_files[@]}"}" | python3 "$HELPER" graph "$format"
 			;;
 		*) die "Unknown format: $format. Use mermaid or dot." ;;
 	esac

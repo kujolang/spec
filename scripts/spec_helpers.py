@@ -11,6 +11,7 @@ All file paths are passed via sys.argv (never string-interpolated into code),
 eliminating command injection risk from spec file paths.
 """
 import json
+import os
 import sys
 
 KNOWN_CHECK_TYPES = {
@@ -38,6 +39,153 @@ KNOWN_TOP_LEVEL_FIELDS = {
 def fail(msg):
     print(msg, file=sys.stderr)
     sys.exit(1)
+
+
+def safe_read_path(path):
+    """Check the lexical path and the resolved target against the project root."""
+    cwd = os.getcwd()
+    if ".." in path:
+        message = f"Error: Path traversal detected in: {path}"
+    else:
+        absolute = os.path.abspath(path)
+        if absolute != cwd and not absolute.startswith(cwd + "/"):
+            message = f"Error: Access to path outside project denied: {path}"
+        else:
+            resolved = os.path.realpath(path) if os.path.exists(path) else absolute
+            if resolved == cwd or resolved.startswith(cwd + "/"):
+                return True
+            print(f"Error: Symlink target outside project denied: {path}", file=sys.stderr)
+            print(f"Resolved target: {resolved}", file=sys.stderr)
+            return False
+    print(message, file=sys.stderr)
+    print("Spec files must be within the current project directory.", file=sys.stderr)
+    return False
+
+
+def validate_ci_json(filepath, strict):
+    if not safe_read_path(filepath):
+        return 1
+    try:
+        if os.path.getsize(filepath) > 1048576:
+            return 1
+        return validate_quiet(filepath, strict)
+    except (OSError, ValueError, TypeError, RecursionError):
+        # CI reports the failing file and leaves detailed diagnostics to validate.
+        return 1
+
+
+def field_text(value):
+    return json.dumps(value) if isinstance(value, (list, dict)) else str(value)
+
+
+def fields_text(spec, fields):
+    return "|".join(
+        " ".join(str(item) for item in value) if isinstance(value, list) else field_text(value)
+        for value in (spec.get(field, "") for field in fields)
+    )
+
+
+def read_metadata(filepath):
+    try:
+        with open(filepath) as fh:
+            spec = json.load(fh)
+        if isinstance(spec, dict):
+            return spec
+    except (OSError, ValueError, RecursionError):
+        pass
+    return None
+
+
+def write_fields(*values):
+    # Bash traditionally discards NULs and trailing newlines from substitutions.
+    for value in values:
+        sys.stdout.write(value.replace("\0", "").rstrip("\n") + "\0")
+
+
+def info_fields(filepath):
+    fields = ("name", "goal", "status", "priority", "version", "id")
+    spec = read_metadata(filepath)
+    if spec is None:
+        write_fields("|" * (len(fields) - 1), "0", "0", "0", "0", "")
+        return
+    arrays = ("acceptance_criteria", "dependencies", "eval_requirements", "risks")
+    counts = [str(len(value)) if isinstance(value, list) else "0"
+              for value in (spec.get(key) for key in arrays)]
+    write_fields(fields_text(spec, fields), *counts, field_text(spec.get("tags", "")))
+
+
+def search_fields(filepath):
+    spec = read_metadata(filepath) or {}
+    write_fields(*(field_text(spec.get(key, "")) for key in ("name", "priority", "tags")))
+
+
+def render_graph(output_format, filepaths):
+    nodes = []
+    by_id = {}
+    for filepath in filepaths:
+        spec = read_metadata(filepath) or {}
+        name, parent, spec_id = (
+            field_text(spec.get(key, default)).replace("\0", "").rstrip("\n")
+            for key, default in (("name", "?"), ("parent_id", ""), ("id", ""))
+        )
+        by_id.setdefault(spec_id, len(nodes))
+        nodes.append((json.dumps(name), parent))
+
+    if output_format == "mermaid":
+        print("```mermaid")
+        print("graph TD")
+        for index, (label, parent) in enumerate(nodes):
+            print(f"    spec{index}[{label}]")
+            if parent and parent in by_id:
+                print(f"    spec{by_id[parent]} --> spec{index}")
+        print("```")
+    else:
+        print("digraph Specs {")
+        print("  rankdir=TB;")
+        print("  node [shape=box, style=rounded];")
+        for index, (label, _) in enumerate(nodes):
+            print(f"  spec{index} [label={label}];")
+        for index, (_, parent) in enumerate(nodes):
+            if parent and parent in by_id:
+                print(f"  spec{by_id[parent]} -> spec{index};")
+        print("}")
+
+
+def validation_result(filepath, strict, json_out, quiet):
+    raw_result = sys.stdin.read()
+    try:
+        result = json.loads(raw_result)
+    except ValueError:
+        result = {"valid": False, "errors": ["Validation output parse error"], "warnings": []}
+
+    valid = False
+    if isinstance(result, dict):
+        warnings = result.get("warnings")
+        if not isinstance(warnings, list):
+            warnings = result["warnings"] = []
+        spec = read_metadata(filepath) or {}
+        for key in spec:
+            if key not in KNOWN_TOP_LEVEL_FIELDS:
+                message = f"Unknown top-level field: {key}"
+                if message not in warnings:
+                    warnings.append(message)
+        valid = str(result.get("valid")) == "True" and not (strict and warnings)
+        result["valid"] = valid
+
+    if json_out:
+        print(json.dumps(result) if isinstance(result, dict) else raw_result.rstrip("\n"))
+    elif valid:
+        if not quiet:
+            print("PASS: Spec is valid")
+    else:
+        print("FAIL: Validation failed")
+        if isinstance(result, dict):
+            for error in result.get("errors", []):
+                print("  - " + error)
+            if strict:
+                for warning in result["warnings"]:
+                    print("  WARNING: " + warning)
+    return 0 if valid else 1
 
 
 def get_field(filepath, field, default=""):
@@ -68,16 +216,7 @@ def get_fields(filepath, *fields):
     try:
         with open(filepath) as fh:
             d = json.load(fh)
-        results = []
-        for field in fields:
-            val = d.get(field, "")
-            if isinstance(val, list):
-                results.append(" ".join(str(v) for v in val))
-            elif isinstance(val, dict):
-                results.append(json.dumps(val))
-            else:
-                results.append(str(val))
-        print("|".join(results))
+        print(fields_text(d, fields))
     except (FileNotFoundError, json.JSONDecodeError):
         print("|".join("" for _ in fields))
 
@@ -93,7 +232,6 @@ def dump_json(filepath):
 
 def list_specs(filepaths, json_out=False):
     """Output spec summaries for multiple files. Uses a single Python process."""
-    import os
     results = []
     for fp in filepaths:
         if not fp.strip():
@@ -349,6 +487,26 @@ def main():
         if not args:
             fail("Usage: spec_helpers.py list [--json] <file1> <file2> ...")
         list_specs(args, json_out)
+
+    elif cmd == "info-fields":
+        info_fields(sys.argv[2])
+
+    elif cmd == "search-fields":
+        search_fields(sys.argv[2])
+
+    elif cmd == "graph":
+        paths = (os.fsdecode(path) for path in sys.stdin.buffer.read().split(b"\0") if path)
+        render_graph(sys.argv[2], paths)
+
+    elif cmd == "validation-result":
+        flags = [arg == "true" for arg in sys.argv[3:6]]
+        sys.exit(validation_result(sys.argv[2], *flags))
+
+    elif cmd == "safe-path":
+        sys.exit(0 if safe_read_path(sys.argv[2]) else 1)
+
+    elif cmd == "validate-ci-json":
+        sys.exit(validate_ci_json(sys.argv[2], sys.argv[3] == "true"))
 
     elif cmd == "validate-quiet":
         if len(sys.argv) < 3:

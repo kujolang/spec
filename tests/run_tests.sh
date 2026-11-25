@@ -812,5 +812,55 @@ rm -rf \"\$dir\"
 exit \$rc
 "
 
+# Metadata batching preserves name formatting, first-parent resolution and CI failure order.
+if python3 - "$SPEC" "$PROJECT_DIR" <<'PYTHON'
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+spec, project = sys.argv[1:]
+with tempfile.TemporaryDirectory(prefix="_test_metadata_", dir=project) as tmp:
+    root = pathlib.Path(tmp)
+    docs = [
+        {"name": "First", "goal": "Root", "id": "00000000-0000-4000-8000-000000000001"},
+        {"name": "Second", "goal": "Duplicate", "id": "00000000-0000-4000-8000-000000000001"},
+        {"name": 'Child "quoted"', "goal": "Child", "priority": "high", "tags": ["speed"],
+         "parent_id": "00000000-0000-4000-8000-000000000001",
+         "acceptance_criteria": ["one", "two"]},
+        {"name": "Missing goal"},
+        {"name": "Bad priority", "goal": "Reject", "priority": "invalid"},
+    ]
+    for index, doc in enumerate(docs):
+        (root / f"{index}.spec.json").write_text(json.dumps(doc))
+
+    def run(*args, code=0):
+        result = subprocess.run([spec, *args], cwd=root, capture_output=True, text=True)
+        assert result.returncode == code, (args, result.returncode, result.stderr)
+        return result.stdout
+
+    mermaid = run("graph", ".")
+    dot = run("graph", ".", "--format", "dot")
+    assert 'spec2[' + json.dumps(docs[2]["name"]) + ']' in mermaid
+    assert "spec0 --> spec2" in mermaid and "spec1 --> spec2" not in mermaid
+    assert "spec0 -> spec2;" in dot and "spec1 -> spec2;" not in dot
+    assert 'Child "quoted"' in run("search", "--tag", "speed", "--query", "CHILD")
+    assert "AC items:   2" in run("info", "2.spec.json")
+    assert json.loads(run("info", "2.spec.json", "--json"))["acceptance_criteria"] == 2
+
+    serial = json.loads(run("ci", ".", "--format", "json", code=1))
+    parallel = json.loads(run("ci", ".", "--format", "json", "--jobs", "3", code=1))
+    assert parallel == serial
+    assert parallel["failures"] == ["./3.spec.json", "./4.spec.json"]
+PYTHON
+then
+	echo "  PASS: batched metadata and CI preserve output contracts"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: batched metadata or CI output changed"
+	FAIL=$((FAIL+1))
+fi
+
 # Summary
 report_results "Results"

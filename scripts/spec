@@ -61,48 +61,12 @@ spec_cache_dir() {
 }
 
 is_safe_path() {
-	# Reject paths that attempt directory traversal or access files outside
-	# the current working directory tree.
-	local p="$1"
-	local cwd_abs p_abs p_real
-
-	# Resolve current working directory to a canonical absolute path.
-	cwd_abs="$(pwd -P 2>/dev/null || pwd)"
-
-	# Reject paths containing .. traversal
-	case "$p" in
-		*..*)
-			echo "Error: Path traversal detected in: $p" >&2
-			echo "Spec files must be within the current project directory." >&2
-			return 1
-			;;
-	esac
-
-	# Normalize user input path to an absolute path.
-	p_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$p" 2>/dev/null)" || p_abs="$p"
-
-	# First, enforce lexical boundary (absolute path check).
-	if [[ "$p_abs" != "$cwd_abs"/* ]] && [[ "$p_abs" != "$cwd_abs" ]]; then
-		echo "Error: Access to path outside project denied: $p" >&2
-		echo "Spec files must be within the current project directory." >&2
-		return 1
-	fi
-
-	# Then enforce symlink boundary: resolved target must also stay in project.
-	if [[ -e "$p" ]]; then
-		p_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null)" || p_real="$p_abs"
-		if [[ "$p_real" != "$cwd_abs"/* ]] && [[ "$p_real" != "$cwd_abs" ]]; then
-			echo "Error: Symlink target outside project denied: $p" >&2
-			echo "Resolved target: $p_real" >&2
-			return 1
-		fi
-	fi
-
-	return 0
+	python3 "$HELPER" safe-path "$1"
 }
 
 invalidate_spec_cache() {
 	local f="$1"
+	[[ "$f" != *.json ]] || return 0
 	local cache_dir cache_key f_key
 	cache_dir="$(spec_cache_dir 2>/dev/null || true)"
 	[[ -n "$cache_dir" ]] || return 0
@@ -121,6 +85,12 @@ spec_to_json() {
 	fsize="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || echo 0)"
 	if [[ "$fsize" -gt 1048576 ]]; then
 		die "File too large: $f ($fsize bytes). Maximum size is 1MB."
+	fi
+
+	# JSON is already in the target format.
+	if [[ "$f" == *.json ]]; then
+		cp "$f" "$out"
+		return
 	fi
 
 	# PERF-02: Check cache — if a cached JSON exists with matching signature, use it
@@ -144,7 +114,6 @@ spec_to_json() {
 	fi
 
 	case "$f" in
-	*.json) cp "$f" "$out" ;;
 	*.yml|*.yaml)
 		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$f" --from yaml --to json > "$out" 2>/dev/null || die "YAML parsing failed for $f"
 		;;
@@ -167,65 +136,19 @@ spec_to_json() {
 validate_file_quiet() {
 	local f="$1" strict="${2:-false}"
 	[[ -f "$f" ]] || return 1
-	is_safe_path "$f" || return 1
-
-	local tmp
-	case "$f" in
-	*.json)
-		local fsize
-		fsize="$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || echo 0)"
-		[[ "$fsize" -le 1048576 ]] || return 1
-		python3 "$HELPER" validate-quiet "$f" "$strict" >/dev/null 2>&1
+	if [[ "$f" == *.json ]]; then
+		python3 "$HELPER" validate-ci-json "$f" "$strict"
 		return $?
-		;;
-	esac
+	fi
 
+	is_safe_path "$f" || return 1
+	local tmp
 	tmp="$(mktemp -t spec_validate_quiet_XXXXXX.json)"
 	spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
 	python3 "$HELPER" validate-quiet "$tmp" "$strict" >/dev/null 2>&1
 	local rc=$?
 	rm -f "$tmp" 2>/dev/null
 	return "$rc"
-}
-
-augment_unknown_top_level_warnings() {
-	local spec_file="$1"
-	local validate_json="$2"
-
-	python3 -c '
-import json
-import sys
-
-allowed = {
-	"name", "goal", "id", "status", "version", "created_at",
-	"updated_at", "completed_at", "estimated_hours", "children", "metadata",
-	"background", "scope", "non_goals", "relevant_systems", "likely_files",
-	"acceptance_criteria", "eval_requirements", "risks", "dependencies",
-	"review_expectations", "human_approval_points", "estimated_effort",
-	"priority", "assignee", "tags", "parent_id"
-}
-
-try:
-	v = json.loads(sys.argv[2])
-except Exception:
-	v = {"valid": False, "errors": ["Validation output parse error"], "warnings": []}
-
-if "warnings" not in v or not isinstance(v["warnings"], list):
-	v["warnings"] = []
-
-try:
-	spec = json.load(open(sys.argv[1]))
-	if isinstance(spec, dict):
-		for k in spec.keys():
-			if k not in allowed:
-				msg = f"Unknown top-level field: {k}"
-				if msg not in v["warnings"]:
-					v["warnings"].append(msg)
-except Exception:
-	pass
-
-print(json.dumps(v))
-' "$spec_file" "$validate_json" 2>/dev/null || echo "$validate_json"
 }
 
 # ---------------------------------------------------------------------------
@@ -693,24 +616,7 @@ cmd_validate() {
         trap "rm -f $tmp" RETURN
         spec_to_json "$f" "$tmp"
         local result; result="$(run_kujo run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
-		result="$(augment_unknown_top_level_warnings "$tmp" "$result")"
-        local valid; valid="$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('valid',False))" 2>/dev/null)" || true
-        # In strict mode, treat warnings as errors
-        if $strict; then
-                local warns; warns="$(echo "$result" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('warnings',[])))" 2>/dev/null)" || warns=0
-                if [[ "$warns" -gt 0 ]]; then valid="False"; fi
-        fi
-        if $json_out; then
-                echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); d['valid'] = '$valid' == 'True'; print(json.dumps(d))" 2>/dev/null || echo "$result"
-                [[ "$valid" == "True" ]] || exit 1
-        elif [[ "$valid" == "True" ]]; then
-                $quiet || echo "PASS: Spec is valid"
-        else
-                echo "FAIL: Validation failed"
-                echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  - '+e) for e in d.get('errors',[])]" 2>/dev/null || true
-                $strict && echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('  WARNING: '+w) for w in d.get('warnings',[])]" 2>/dev/null || true
-                exit 1
-        fi
+        python3 "$HELPER" validation-result "$tmp" "$strict" "$json_out" "$quiet" <<< "$result" || exit 1
 }
 
 cmd_render() {
@@ -897,9 +803,11 @@ cmd_search() {
 		local tmp; tmp="$(mktemp -t spec_search_XXXXXX.json)"
 		spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; continue; }
 		local name pri2 tags
-		name="$(python3 "$HELPER" get "$tmp" name "" 2>/dev/null)" || name=""
-		pri2="$(python3 "$HELPER" get "$tmp" priority "" 2>/dev/null)" || pri2=""
-		tags="$(python3 "$HELPER" get "$tmp" tags "" 2>/dev/null)" || tags=""
+		{
+			IFS= read -r -d '' name || name=""
+			IFS= read -r -d '' pri2 || pri2=""
+			IFS= read -r -d '' tags || tags=""
+		} < <(python3 "$HELPER" search-fields "$tmp" 2>/dev/null)
 		rm -f "$tmp" 2>/dev/null
 
 		local match=true
@@ -937,16 +845,18 @@ cmd_status() {
 		# Update the file with a format-aware mutation that inserts status
 		# when missing, instead of relying on line replacement.
 		if [[ "$f" == *.json ]]; then
-			python3 "$HELPER" dump "$tmp" | python3 -c "
+			python3 -c "
 import json, sys
-d = json.load(sys.stdin)
+with open(sys.argv[3]) as source:
+	d = json.load(source)
 d['status'] = sys.argv[1]
 json.dump(d, open(sys.argv[2], 'w'), indent=2)
-" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update JSON status"; }
+" "$new_status" "$f" "$tmp" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update JSON status"; }
 		elif [[ "$f" == *.yml || "$f" == *.yaml ]]; then
-			python3 "$HELPER" dump "$tmp" | python3 -c "
+			python3 -c "
 import json, sys
-d = json.load(sys.stdin)
+with open(sys.argv[3]) as source:
+	d = json.load(source)
 d['status'] = sys.argv[1]
 out = sys.argv[2]
 try:
@@ -958,18 +868,19 @@ except Exception:
 		lines.append(f'{k}: {json.dumps(v)}')
 	text = '\n'.join(lines) + '\n'
 open(out, 'w').write(text)
-" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update YAML status"; }
+" "$new_status" "$f" "$tmp" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update YAML status"; }
 		elif [[ "$f" == *.toml ]]; then
-			python3 "$HELPER" dump "$tmp" | python3 -c "
+			python3 -c "
 import json, sys
-d = json.load(sys.stdin)
+with open(sys.argv[3]) as source:
+	d = json.load(source)
 d['status'] = sys.argv[1]
 out = sys.argv[2]
 lines = []
 for k, v in d.items():
 	lines.append(f'{k} = {json.dumps(v)}')
 open(out, 'w').write('\n'.join(lines) + '\n')
-" "$new_status" "$f" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update TOML status"; }
+" "$new_status" "$f" "$tmp" || { mv "$bak" "$f"; rm -f "$tmp"; die "Failed to update TOML status"; }
 		else
 			mv "$bak" "$f"
 			rm -f "$tmp" 2>/dev/null
@@ -1049,9 +960,10 @@ cmd_info() {
 	spec_to_json "$f" "$tmp"
 
 	if $json_out; then
-		python3 "$HELPER" dump "$tmp" | python3 -c "
+		python3 -c "
 import json, sys
-d = json.load(sys.stdin)
+with open(sys.argv[2]) as source:
+	d = json.load(source)
 info = {
 	'name': d.get('name',''),
 	'goal': d.get('goal',''),
@@ -1067,17 +979,18 @@ info = {
 	'file': sys.argv[1]
 }
 print(json.dumps(info, indent=2))
-" "$f"
+" "$f" "$tmp"
 	else
-		# Single call extracts all fields via the helper
-		local fields; fields="$(python3 "$HELPER" fields "$tmp" name goal status priority version id)" || fields="?"
+		local fields name goal status pri ver id ac dep ev rk tags
+		{
+			IFS= read -r -d '' fields || fields="?"
+			IFS= read -r -d '' ac || ac=0
+			IFS= read -r -d '' dep || dep=0
+			IFS= read -r -d '' ev || ev=0
+			IFS= read -r -d '' rk || rk=0
+			IFS= read -r -d '' tags || tags=""
+		} < <(python3 "$HELPER" info-fields "$tmp")
 		IFS='|' read -r name goal status pri ver id <<< "$fields"
-		local ac dep ev rk tags
-		ac="$(python3 "$HELPER" count "$tmp" acceptance_criteria)" || ac=0
-		dep="$(python3 "$HELPER" count "$tmp" dependencies)" || dep=0
-		ev="$(python3 "$HELPER" count "$tmp" eval_requirements)" || ev=0
-		rk="$(python3 "$HELPER" count "$tmp" risks)" || rk=0
-		tags="$(python3 "$HELPER" get "$tmp" tags)" || tags=""
 
 		echo "File:       $f"
 		echo "Name:       $name"
