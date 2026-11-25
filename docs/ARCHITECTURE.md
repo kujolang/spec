@@ -103,7 +103,7 @@ spec CLI parses result, reports PASS/FAIL
 
 4. **Kujo-native YAML/TOML conversion**: `src/convert.kujo` uses the runtime's structured-data parsers and serializers. Python remains a CLI support dependency for path, metadata, and batch operations.
 
-5. **No type() in conditions**: Kujo runtime v1.0.0 has known quirks with `type()` checks in conditional branches. The modules use `has_key()` instead.
+5. **Structured data access**: The modules use `has_key()` for field presence and `type()` where behavior depends on a value’s type. Rendering and export use native arrays directly.
 
 ## Compatibility Matrix
 
@@ -130,6 +130,7 @@ Unsupported assumptions:
 - File reads are restricted to the current project tree and reject path traversal plus symlink escapes.
 - Output writes can be restricted with `SPEC_SAFE_WRITE=on`; `--unsafe-write` is an explicit override.
 - User-home templates can be blocked with `SPEC_TEMPLATE_SOURCE_POLICY=project-only` or `--strict-template-source`.
-- Conversion caching uses canonical file paths and content-aware signatures so stale or colliding cache entries are not reused.
+- YAML and TOML conversion caching uses canonical file paths and content-aware signatures. JSON inputs already use the interchange format and bypass the conversion cache.
 - Conversion caches are private per-user directories and are disabled when the cache path is a symlink or cannot be restricted to mode `0700`.
 - `validate-all` checks the requested directory boundary once, then validates converted JSON inputs in one Python process. This preserves deterministic ordering while avoiding one path-resolution and interpreter startup per file.
+- JSON files in `spec ci` use one helper invocation per file for path checks, the size limit, and validation. Parallel results are aggregated by discovery order.

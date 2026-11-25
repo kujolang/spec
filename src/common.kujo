@@ -11,6 +11,7 @@ export func dict_get_arr(obj, key) {
 	hk := has_key(obj, key)
 	if hk == true || hk == 1 {
 		arr := obj[key]
+		if type(arr) == "array" { return arr }
 		lc := len(arr)
 		items := []
 		idx := 0
