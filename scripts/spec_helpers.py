@@ -63,7 +63,7 @@ def safe_read_path(path):
 
 
 def validate_ci_json(filepath, strict):
-    if not safe_read_path(filepath):
+    if not os.path.isfile(filepath) or not safe_read_path(filepath):
         return 1
     try:
         if os.path.getsize(filepath) > 1048576:
@@ -72,6 +72,19 @@ def validate_ci_json(filepath, strict):
     except (OSError, ValueError, TypeError, RecursionError):
         # CI reports the failing file and leaves detailed diagnostics to validate.
         return 1
+
+
+def validate_ci_batch(strict, fail_fast):
+    """Emit one status per JSON file in discovery order."""
+    for path in sys.stdin.buffer.read().split(b"\0"):
+        if not path:
+            continue
+        if validate_ci_json(os.fsdecode(path), strict) == 0:
+            sys.stdout.write("p")
+        else:
+            sys.stdout.write("f")
+            if fail_fast:
+                break
 
 
 def field_text(value):
@@ -507,6 +520,9 @@ def main():
 
     elif cmd == "validate-ci-json":
         sys.exit(validate_ci_json(sys.argv[2], sys.argv[3] == "true"))
+
+    elif cmd == "validate-ci-batch":
+        validate_ci_batch(sys.argv[2] == "true", sys.argv[3] == "true")
 
     elif cmd == "validate-quiet":
         if len(sys.argv) < 3:

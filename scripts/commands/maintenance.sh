@@ -67,10 +67,27 @@ spec_cmd_ci() {
 	fi
 
 	if [[ "$jobs" -eq 1 ]] || [[ "${#scan_files[@]}" -eq 1 ]]; then
-		local f
-		for f in "${scan_files[@]}"; do
+		local idx f valid batch_start=0 batch_end=0 batch_results=""
+		for ((idx=0; idx<${#scan_files[@]}; idx++)); do
+			f="${scan_files[$idx]}"
+			valid=false
+			if [[ "$f" == *.json ]]; then
+				if [[ "$idx" -ge "$batch_end" ]]; then
+					# Keep batches bounded and leave YAML/TOML in discovery order.
+					batch_start="$idx"
+					for ((batch_end=idx; batch_end<${#scan_files[@]} && batch_end-idx<256; batch_end++)); do
+						[[ "${scan_files[$batch_end]}" == *.json ]] || break
+					done
+					batch_results="$(printf '%s\0' "${scan_files[@]:batch_start:batch_end-batch_start}" |
+						python3 "$HELPER" validate-ci-batch "$strict" "$fail_fast")" || batch_results=""
+				fi
+				[[ "${batch_results:idx-batch_start:1}" == p ]] && valid=true
+			elif validate_file_quiet "$f" "$strict"; then
+				valid=true
+			fi
+
 			total=$((total + 1))
-			if validate_file_quiet "$f" "$strict"; then
+			if $valid; then
 				passed=$((passed + 1))
 			else
 				failed=$((failed + 1))

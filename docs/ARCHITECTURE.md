@@ -133,4 +133,4 @@ Unsupported assumptions:
 - YAML and TOML conversion caching uses canonical file paths and content-aware signatures. JSON inputs already use the interchange format and bypass the conversion cache.
 - Conversion caches are private per-user directories and are disabled when the cache path is a symlink or cannot be restricted to mode `0700`.
 - `validate-all` checks the requested directory boundary once, then validates converted JSON inputs in one Python process. This preserves deterministic ordering while avoiding one path-resolution and interpreter startup per file.
-- JSON files in `spec ci` use one helper invocation per file for path checks, the size limit, and validation. Parallel results are aggregated by discovery order.
+- Sequential `spec ci` checks paths, enforces the size limit, and validates consecutive JSON specs in one helper invocation per batch of up to 256 files. YAML and TOML use the runtime conversion path. Explicit parallel scans aggregate per-file results in discovery order.

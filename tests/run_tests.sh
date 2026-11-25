@@ -862,5 +862,53 @@ else
 	FAIL=$((FAIL+1))
 fi
 
+# Sequential CI preserves discovery order across JSON batches and other formats.
+if python3 - "$SPEC" <<'PYTHON'
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+spec = sys.argv[1]
+with tempfile.TemporaryDirectory(prefix="spec_ci_batch_") as tmp:
+    root = pathlib.Path(tmp)
+    valid = {"name": "Task", "goal": "Check sequential CI"}
+    for index in range(257):
+        (root / f"{index:03}.spec.json").write_text(json.dumps(valid))
+    (root / "256.spec.json").write_text(json.dumps(dict(valid, unknown_field=True)))
+    (root / "257.spec.yml").write_text("name: Task\ngoal: Validate YAML\n")
+    (root / "258.spec.toml").write_text('name = "Task"\ngoal = "Validate TOML"\n')
+    (root / "259 big.spec.json").write_text(json.dumps(valid) + " " * 1048576)
+    (root / "260.spec.json").write_text("{")
+    (root / "261.spec.json").write_text(json.dumps(valid))
+
+    def ci(*args, code=1):
+        result = subprocess.run(
+            [spec, "ci", "--format", "json", *args], cwd=root, capture_output=True, text=True
+        )
+        assert result.returncode == code, (args, result.returncode, result.stderr)
+        return json.loads(result.stdout)
+
+    assert ci("--strict") == {
+        "total": 262, "passed": 259, "failed": 3, "truncated": False,
+        "failures": ["./256.spec.json", "./259 big.spec.json", "./260.spec.json"],
+    }
+    assert ci("--strict", "--fail-fast") == {
+        "total": 257, "passed": 256, "failed": 1, "truncated": True,
+        "failures": ["./256.spec.json"],
+    }
+    assert ci("--strict", "--max-files", "256", code=0) == {
+        "total": 256, "passed": 256, "failed": 0, "truncated": True, "failures": [],
+    }
+PYTHON
+then
+	echo "  PASS: sequential CI batches preserve strict, mixed-format and scan-limit behavior"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: sequential CI batch behavior changed"
+	FAIL=$((FAIL+1))
+fi
+
 # Summary
 report_results "Results"
