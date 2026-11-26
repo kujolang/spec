@@ -57,7 +57,7 @@ def in_project(root, candidate):
 def safe_read_path(path):
     """Check the lexical path and resolved target against the current project."""
     cwd = os.getcwd()
-    if ".." in path:
+    if ".." in path.split(os.sep):
         message = f"Error: Path traversal detected in: {path}"
     elif not in_project(cwd, os.path.abspath(path)):
         message = f"Error: Access to path outside project denied: {path}"
@@ -126,10 +126,13 @@ def cache_entry(source, fmt):
     return os.path.join(cache_directory(), key + ".conversion")
 
 
-def prepare_conversion(source, snapshot, output, fmt, runtime, converter):
+def prepare_conversion(source, snapshot, output, fmt, runtime, converter, use_cache):
     data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
     with open(snapshot, "wb") as handle:
         handle.write(data)
+    if use_cache == "false":
+        print("-")
+        return
     try:
         binary = shutil.which(runtime)
         if not binary:
@@ -175,6 +178,47 @@ def cache_conversion(source, output, fmt, signature):
             os.unlink(temporary)
 
 
+def github_import(output_format, name, path):
+    try:
+        issue = json.load(sys.stdin)
+        spec = {
+            "name": name or issue.get("title", "GitHub Issue"),
+            "goal": (issue.get("body") or "")[:500],
+            "version": "0.1.0",
+            "priority": "medium",
+            "tags": ["github"],
+        }
+        if output_format == "json":
+            output = json.dumps(spec, indent=2)
+        elif output_format == "toml":
+            output = "".join(f"{key} = {json.dumps(value)}\n" for key, value in spec.items())
+        else:
+            try:
+                import yaml
+            except ImportError:
+                output = "".join(f"{key}: {json.dumps(value)}\n" for key, value in spec.items())
+            else:
+                output = yaml.safe_dump(spec)
+        with open(path, "x", encoding="utf-8") as handle:
+            handle.write(output)
+    except (OSError, ValueError, AttributeError, TypeError):
+        sys.exit(1)
+
+
+def commit_status(path, target, original, candidate):
+    if not safe_read_path(path):
+        sys.exit(1)
+    try:
+        metadata = os.lstat(target)
+        if (os.path.realpath(path) != target or not stat.S_ISREG(metadata.st_mode)
+                or read_bounded(original, MAX_SOURCE_BYTES) != read_bounded(target, MAX_SOURCE_BYTES)):
+            fail(f"Error: Spec changed while updating status: {path}")
+        os.chmod(candidate, stat.S_IMODE(metadata.st_mode) & 0o777)
+        os.replace(candidate, target)
+    except (OSError, ValueError) as error:
+        fail(f"Error: Cannot publish status update for {path}: {error}")
+
+
 def validate_ci_json(filepath, strict):
     if not safe_read_path(filepath):
         return 1
@@ -186,12 +230,12 @@ def validate_ci_json(filepath, strict):
         return 1
 
 
-def discover_ci(directory, maximum):
+def discover_specs(directory, max_depth, maximum):
     if not safe_read_path(directory):
         return 1
 
     def visit(folder, depth):
-        if depth == 5:
+        if depth == max_depth:
             return
         try:
             with os.scandir(folder) as entries:
@@ -613,11 +657,15 @@ def validate_spec(spec, strict):
     return 0
 
 
-def validate_many(strict, filepaths):
+def validate_many(staged_dir, strict, filepaths):
     passed = 0
     failed = 0
     for filepath in filepaths:
-        if validate_quiet(filepath, strict) == 0:
+        if os.path.dirname(filepath) == staged_dir:
+            result = validate_quiet(filepath, strict)
+        else:
+            result = validate_ci_json(filepath, strict)
+        if result == 0:
             passed += 1
         else:
             failed += 1
@@ -680,6 +728,24 @@ def main():
     elif cmd == "safe-path":
         sys.exit(0 if safe_read_path(sys.argv[2]) else 1)
 
+    elif cmd == "resolved-read-path":
+        if not safe_read_path(sys.argv[2]):
+            sys.exit(1)
+        sys.stdout.buffer.write(os.fsencode(os.path.realpath(sys.argv[2])) + b"\0")
+
+    elif cmd == "github-import":
+        github_import(*sys.argv[2:])
+
+    elif cmd == "status-json":
+        spec = read_metadata(sys.argv[2])
+        if spec is None:
+            fail("Error: Expected a JSON object")
+        spec["status"] = sys.argv[3]
+        print(json.dumps(spec, indent=2))
+
+    elif cmd == "commit-status":
+        commit_status(*sys.argv[2:])
+
     elif cmd == "copy-spec":
         try:
             copy_spec(*sys.argv[2:])
@@ -698,8 +764,8 @@ def main():
     elif cmd == "safe-write-path":
         sys.exit(0 if safe_write_path(sys.argv[2]) else 1)
 
-    elif cmd == "discover-ci":
-        sys.exit(discover_ci(sys.argv[2], int(sys.argv[3])))
+    elif cmd == "discover-specs":
+        sys.exit(discover_specs(sys.argv[2], int(sys.argv[3]), int(sys.argv[4])))
 
     elif cmd == "ci-failures":
         ci_failures(sys.argv[2], *(int(v) for v in sys.argv[3:6]), sys.argv[6] == "true")
@@ -717,10 +783,8 @@ def main():
         sys.exit(validate_quiet(sys.argv[2], strict))
 
     elif cmd == "validate-many":
-        if len(sys.argv) < 4:
-            fail("Usage: spec_helpers.py validate-many <strict=true|false> <json-file> [...]")
-        strict = sys.argv[2].lower() == "true"
-        sys.exit(validate_many(strict, sys.argv[3:]))
+        paths = (os.fsdecode(path) for path in sys.stdin.buffer.read().split(b"\0") if path)
+        sys.exit(validate_many(sys.argv[2], sys.argv[3] == "true", paths))
 
     else:
         fail(f"Unknown command: {cmd}")

@@ -845,6 +845,104 @@ rm -rf \"\$dir\"
 exit \$rc
 "
 
+# Security boundaries apply consistently across CLI entry points.
+if python3 - "$SPEC" <<'PYTHON'
+import json
+import os
+import pathlib
+import stat
+import subprocess
+import sys
+import tempfile
+
+spec = sys.argv[1]
+with tempfile.TemporaryDirectory() as tmp:
+    base = pathlib.Path(tmp)
+    root = base / "project"
+    outside = base / "outside"
+    root.mkdir()
+    outside.mkdir()
+    tools = base / "bin"
+    tools.mkdir()
+    gh = tools / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "assert sys.argv[1:] == ['issue', 'view', '--json', 'title,body', '--repo', 'owner/repo', '--', '42']\n"
+        'print(json.dumps({"title": "Import title", "body": "Issue body"}))\n'
+    )
+    gh.chmod(0o700)
+
+    def run(*args, code=0, settings=None):
+        env = {**os.environ, **(settings or {})}
+        result = subprocess.run([spec, *args], cwd=root, env=env, capture_output=True, text=True)
+        assert result.returncode == code, (args, result.returncode, result.stderr, result.stdout)
+        return result.stdout
+
+    github_env = {"PATH": str(tools) + os.pathsep + os.environ["PATH"], "SPEC_SAFE_WRITE": "on"}
+    for extension in ("json", "yaml", "toml"):
+        output = f"team's spec.{extension}"
+        run("init", "--from", "github:owner/repo/42", "--output", output, "--format", extension,
+            settings=github_env)
+        run("convert", output, "--to", "json", "--output", "converted.json")
+        converted = json.loads((root / "converted.json").read_text())
+        assert (converted["name"], converted["goal"]) == ("Import title", "Issue body")
+
+    valid = root / "valid.json"
+    valid.write_text('{"name":"Valid","goal":"A goal"}')
+    (root / "notes.md").symlink_to(outside / "notes.md")
+    (root / "-").symlink_to(outside / "dash.md")
+    for output in ("notes.md", "-"):
+        run("render", valid.name, "--output", output, code=1, settings={"SPEC_SAFE_WRITE": "on"})
+    assert not list(outside.iterdir())
+    run("render", valid.name, "--output", "unused.md", code=1, settings={"SPEC_SAFE_WRITE": "typo"})
+
+    (outside / "private.spec.json").write_text(valid.read_text())
+    for command in ("list", "graph", "validate-all", "ci"):
+        run(command, str(outside), code=1)
+
+    scan = root / "scan"
+    scan.mkdir()
+    filename = "line\nbreak:comma,percent%.spec.json"
+    (scan / filename).write_text('{"name":"Missing goal"}')
+    (scan / "valid.spec.json").write_text(valid.read_text())
+    serial = json.loads(run("ci", "scan", "--format", "json", code=1))
+    assert serial["total"] == 2 and serial["failures"] == [f"scan/{filename}"]
+    assert json.loads(run("ci", "scan", "--jobs", "2", "--format", "json", code=1)) == serial
+    listing = json.loads(run("list", "--json", "scan"))
+    assert [item["file"] for item in listing] == [f"scan/{filename}", "scan/valid.spec.json"]
+
+    (scan / "large.spec.json").write_text(valid.read_text() + " " * (1024 * 1024))
+    assert "1 passed, 2 failed" in run("validate-all", "scan", code=1)
+    (root / "large.json").symlink_to(scan / "large.spec.json")
+    run("validate", "large.json", code=1)
+
+    valid.chmod(0o640)
+    (root / "alias.json").symlink_to(valid)
+    run("status", "alias.json", "--set", "review")
+    assert (root / "alias.json").is_symlink()
+    assert json.loads(valid.read_text())["status"] == "review"
+    assert stat.S_IMODE(valid.stat().st_mode) == 0o640
+    bad = scan / filename
+    original = bad.read_bytes()
+    run("status", str(bad), "--set", "review", code=1)
+    assert bad.read_bytes() == original
+    assert not list(scan.glob(".spec-status.*"))
+
+    tmpdir = base / "operator's temp"
+    tmpdir.mkdir()
+    run("render", valid.name, settings={"TMPDIR": str(tmpdir)})
+    assert not list(tmpdir.iterdir())
+
+PYTHON
+then
+	echo "  PASS: security boundaries hold across CLI entry points"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: security boundary regression"
+	FAIL=$((FAIL+1))
+fi
+
 # Metadata batching preserves name formatting, first-parent resolution and CI failure order.
 if python3 - "$SPEC" "$PROJECT_DIR" <<'PYTHON'
 import json

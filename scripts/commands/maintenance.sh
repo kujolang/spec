@@ -57,7 +57,7 @@ spec_cmd_ci() {
 			break
 		fi
 		scan_files+=("$f")
-	done < <(python3 "$HELPER" discover-ci "$dir" "$max_files")
+	done < <(discover_specs "$dir" 5 "$max_files")
 
 	if [[ "${#scan_files[@]}" -eq 0 ]]; then
 		die "No spec files found in $dir"
@@ -245,7 +245,7 @@ spec_cmd_template() {
 			is_safe_path "$src" || return 1
 			validate_template_name "$name"
 			mkdir -p "$user_template_dir" 2>/dev/null || true
-			cp "$src" "$user_template_dir/${name}.template.yml"
+			cp -- "$src" "$user_template_dir/${name}.template.yml"
 			echo "Template created: $user_template_dir/${name}.template.yml"
 			;;
 		delete)
@@ -262,7 +262,7 @@ spec_cmd_template() {
 	esac
 }
 
-spec_cmd_export_unified() {
+spec_cmd_export_unified() (
 	local f="${1:-}" out="" fmt="agent" payload_format="agent" unsafe_write=false
 	local unsafe_opt=""
 	while [[ $# -gt 0 ]]; do case "$1" in
@@ -286,12 +286,12 @@ spec_cmd_export_unified() {
 			[[ "$payload_format" =~ ^(agent|dispatch)$ ]] || die "Invalid --payload-format: $payload_format (use agent or dispatch)"
 			local tmp payload source_abs checksum generated_at schema_version envelope_json
 			tmp="$(mktemp -t spec_export_env_XXXXXX.json)"
-			trap "rm -f $tmp" RETURN
+			trap 'rm -f -- "$tmp"' EXIT
 			spec_to_json "$f" "$tmp"
 			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format")" || die "Envelope export failed: Kujo runtime returned an error"
 			[[ -n "$payload" ]] || die "Envelope export failed: Kujo runtime produced no output"
 			source_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
-			checksum="$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}')"
+			checksum="$(shasum -a 256 < "$f" 2>/dev/null | awk '{print $1}')"
 			generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
 			schema_version="${SPEC_SCHEMA_VERSION:-1.0.0}"
 			envelope_json="$(python3 -c '
@@ -330,7 +330,7 @@ print(json.dumps(out, indent=2))
 			;;
 		*) die "Unknown format: $fmt. Use agent, dispatch, markdown, eval, or envelope." ;;
 	esac
-}
+)
 
 spec_cmd_init_interactive() {
 	echo "=== Spec Interactive Creator ==="
@@ -471,7 +471,7 @@ spec_cmd_doctor() {
 }
 
 spec_cmd_changelog() {
-	local since="${1:-}"
+	local since="${1:-}" base commits
 	if [[ -z "$since" ]]; then
 		# Default: since last tag
 		since="$(git describe --tags --abbrev=0 2>/dev/null)" || since=""
@@ -482,61 +482,61 @@ spec_cmd_changelog() {
 	fi
 	[[ -z "$since" ]] && die "Could not determine changelog base. Specify a ref: spec changelog <tag-or-commit>"
 
+	base="$(git rev-parse --verify --end-of-options "${since}^{commit}" 2>/dev/null)" || die "Invalid changelog ref: $since"
+	commits="$(git log --oneline --no-merges "$base..HEAD" --)" || die "Cannot read changelog"
 	echo "## Changelog ($since..HEAD)"
 	echo ""
 
 	# Group by conventional commit type
 	echo "### Features"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -iE 'feat:|feature:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -iE 'feat:|feature:' | sed 's/^/- /' || echo "  (none)"
 
 	echo ""
 	echo "### Fixes"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -iE 'fix:|bug:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -iE 'fix:|bug:' | sed 's/^/- /' || echo "  (none)"
 
 	echo ""
 	echo "### Performance"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -iE 'perf:|performance:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -iE 'perf:|performance:' | sed 's/^/- /' || echo "  (none)"
 
 	echo ""
 	echo "### Security"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -iE 'sec:|security:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -iE 'sec:|security:' | sed 's/^/- /' || echo "  (none)"
 
 	echo ""
 	echo "### Documentation"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -iE 'docs:|doc:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -iE 'docs:|doc:' | sed 's/^/- /' || echo "  (none)"
 
 	echo ""
 	echo "### Other"
-	git log "$since..HEAD" --oneline --no-merges 2>/dev/null | grep -viE 'feat:|fix:|perf:|sec:|docs:|feature:|bug:|performance:|security:|doc:' | sed 's/^/- /' || echo "  (none)"
+	printf '%s\n' "$commits" | grep -viE '^$|feat:|fix:|perf:|sec:|docs:|feature:|bug:|performance:|security:|doc:' | sed 's/^/- /' || echo "  (none)"
 }
 
-spec_cmd_graph() {
+spec_cmd_graph() (
 	local dir="${1:-.}" format="mermaid"
 	while [[ $# -gt 0 ]]; do case "$1" in
 		--format) format="$2"; shift 2 ;; *) shift ;;
 	esac; done
 
-	# Collect all specs and their relationships
-	local files
-	files="$(find "$dir" -maxdepth 5 -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
-	[[ -z "$files" ]] && die "No spec files found"
+	[[ -d "$dir" ]] || die "Directory not found: $dir"
+	is_safe_path "$dir" || exit 1
 
 	# Build a graph from spec parent_id relationships
 	local tmpdir; tmpdir="$(mktemp -d)"
-	trap "$(printf 'rm -rf -- %q' "$tmpdir")" RETURN
+	trap 'rm -rf -- "$tmpdir"' EXIT
 	local json_files=()
 	local f jf
-	while IFS= read -r f; do
-		[[ -z "$f" ]] && continue
+	while IFS= read -r -d '' f; do
 		jf="$tmpdir/${#json_files[@]}.json"
 		spec_to_json "$f" "$jf" 2>/dev/null || continue
 		json_files+=("$jf")
-	done <<< "$files"
+	done < <(discover_specs "$dir" 5)
 
+	[[ "${#json_files[@]}" -gt 0 ]] || die "No spec files found"
 	case "$format" in
 		mermaid|dot)
 			printf '%s\0' "${json_files[@]+"${json_files[@]}"}" | python3 "$HELPER" graph "$format"
 			;;
 		*) die "Unknown format: $format. Use mermaid or dot." ;;
 	esac
-}
+)
