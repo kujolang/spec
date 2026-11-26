@@ -8,8 +8,15 @@ source "$SCRIPT_DIR/test_helpers.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SPEC="$PROJECT_DIR/scripts/spec"
 ITERATIONS="${1:-200}"
+if [[ ! "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
+	echo "Error: fuzz iteration count must be a positive integer" >&2
+	exit 1
+fi
 PASS=0
 FAIL=0
+SANDBOX="$(mktemp -d "$PROJECT_DIR/.spec-fuzz.XXXXXX")"
+trap 'rm -rf -- "$SANDBOX"' EXIT
+fixture="$SANDBOX/input.json"
 
 echo "=== Spec Fuzz Tests ($ITERATIONS iterations) ==="
 echo ""
@@ -19,7 +26,7 @@ for i in $(seq 1 "$ITERATIONS"); do
 	(( i % 50 == 0 )) && echo "  Progress: $i/$ITERATIONS"
 
 	# Generate random JSON using Python
-	if ! python3 -c "
+	if ! python3 -I -c "
 import json, random, string, sys
 def rand_str(n):
 	return ''.join(random.choice(string.ascii_letters + string.digits + ' _-') for _ in range(n))
@@ -44,8 +51,8 @@ if random.random() > 0.5:
 if random.random() > 0.3:
 	spec[rand_str(random.randint(1, 20))] = rand_str(random.randint(0, 200))
 
-json.dump(spec, open('${PROJECT_DIR}/_fuzz_test.json', 'w'))
-" 2>/dev/null; then
+json.dump(spec, open(sys.argv[1], 'w'))
+" "$fixture" 2>/dev/null; then
 		echo "  FAIL: iteration $i — fixture generation failed"
 		FAIL=$((FAIL + 1))
 		continue
@@ -53,7 +60,7 @@ json.dump(spec, open('${PROJECT_DIR}/_fuzz_test.json', 'w'))
 
 	# Validate — expected outcomes are rc=0 (valid) or rc=1 (validation failure).
 	set +e
-	out="$($SPEC validate "$PROJECT_DIR/_fuzz_test.json" 2>&1)"
+	out="$("$SPEC" validate "$fixture" 2>&1)"
 	rc=$?
 	set -e
 
@@ -69,7 +76,7 @@ json.dump(spec, open('${PROJECT_DIR}/_fuzz_test.json', 'w'))
 	# Verify output shape only for expected exit code paths.
 	if $local_ok; then
 		if [[ -n "$out" ]]; then
-			if echo "$out" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+			if echo "$out" | python3 -I -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
 				: # Valid JSON output
 			elif echo "$out" | grep -q "PASS:\|FAIL:\|Error:" 2>/dev/null; then
 				: # Human-readable output
@@ -88,8 +95,6 @@ json.dump(spec, open('${PROJECT_DIR}/_fuzz_test.json', 'w'))
 		FAIL=$((FAIL + 1))
 	fi
 done
-
-rm -f "$PROJECT_DIR/_fuzz_test.json"
 
 echo ""
 echo "Fuzz summary: PASS=$PASS FAIL=$FAIL ITERATIONS=$ITERATIONS"

@@ -32,16 +32,16 @@ check "zsh completion exists" test -f "$ZSH_COMPLETION"
 check "fish completion exists" test -f "$FISH_COMPLETION"
 
 for cmd in "${REQUIRED_COMMANDS[@]}"; do
-	check "bash includes command: $cmd" bash -c "grep -q -- '$cmd' '$BASH_COMPLETION'"
-	check "zsh includes command: $cmd" bash -c "grep -q -- '$cmd' '$ZSH_COMPLETION'"
-	check "fish includes command: $cmd" bash -c "grep -q -- '$cmd' '$FISH_COMPLETION'"
+	check "bash includes command: $cmd" grep -Fq -- "$cmd" "$BASH_COMPLETION"
+	check "zsh includes command: $cmd" grep -Fq -- "$cmd" "$ZSH_COMPLETION"
+	check "fish includes command: $cmd" grep -Fq -- "$cmd" "$FISH_COMPLETION"
 done
 
 for flag in "${REQUIRED_FLAGS[@]}"; do
 	fish_flag="${flag#--}"
-	check "bash includes flag: $flag" bash -c "grep -q -- '$flag' '$BASH_COMPLETION'"
-	check "zsh includes flag: $flag" bash -c "grep -q -- '$flag' '$ZSH_COMPLETION'"
-	check "fish includes flag: $flag" bash -c "grep -q -- '-l $fish_flag' '$FISH_COMPLETION'"
+	check "bash includes flag: $flag" grep -Fq -- "$flag" "$BASH_COMPLETION"
+	check "zsh includes flag: $flag" grep -Fq -- "$flag" "$ZSH_COMPLETION"
+	check "fish includes flag: $flag" grep -Fq -- "-l $fish_flag" "$FISH_COMPLETION"
 done
 
 report_results "Completion Parity"
