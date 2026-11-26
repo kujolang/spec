@@ -62,26 +62,26 @@ echo ""
 
 # Gate 8: CLI commands work
 echo "[GATE 8] CLI smoke test"
-check "spec version works" bash -c "'$PROJECT_DIR/scripts/spec' version >/dev/null"
-check "spec help works" bash -c "'$PROJECT_DIR/scripts/spec' help >/dev/null"
+check "spec version works" "$PROJECT_DIR/scripts/spec" version
+check "spec help works" "$PROJECT_DIR/scripts/spec" help
 echo ""
 
 # Gate 9: Benchmark health and trend guard
 echo "[GATE 9] Benchmark + Trend Guard"
 check "benchmark within budget (${SPEC_BENCH_PROFILE}: ${SPEC_BENCH_COUNT} specs <= ${SPEC_BENCH_BASELINE_SECONDS}s; trend guard enforced)" \
-	bash -c "'$PROJECT_DIR/tests/benchmark.sh' '$SPEC_BENCH_COUNT' '$SPEC_BENCH_BASELINE_SECONDS' '$SPEC_BENCH_PROFILE' >/dev/null"
+	"$PROJECT_DIR/tests/benchmark.sh" "$SPEC_BENCH_COUNT" "$SPEC_BENCH_BASELINE_SECONDS" "$SPEC_BENCH_PROFILE"
 echo ""
 
 # Gate 10: Fuzz health
 echo "[GATE 10] Fuzz"
 check "fuzz harness completes (${SPEC_FUZZ_ITERATIONS} iterations)" \
-	bash -c "'$PROJECT_DIR/tests/fuzz.sh' '$SPEC_FUZZ_ITERATIONS' >/dev/null"
+	"$PROJECT_DIR/tests/fuzz.sh" "$SPEC_FUZZ_ITERATIONS"
 echo ""
 
 # Gate 11: Completion parity
 echo "[GATE 11] Shell Completions"
 check "completion files match key command/flag surface" \
-	bash -c "'$PROJECT_DIR/scripts/verify_completion_parity.sh' >/dev/null"
+	"$PROJECT_DIR/scripts/verify_completion_parity.sh"
 echo ""
 
 report_results "Results"
