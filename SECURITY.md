@@ -6,13 +6,15 @@ Spec reads user-provided spec files (YAML, TOML, JSON) and validates them agains
 
 ### 1. Command Injection Prevention (SEC-01 — fixed v0.1.0)
 
-Filenames are passed to Kujo and Python helpers as arguments (not interpolated into executable source), eliminating the command injection vector that existed in earlier inline Python code.
+Filenames are passed to Kujo and Python helpers as arguments. GitHub issue imports pass the output path to a fixed serializer and terminate GitHub CLI option parsing before the issue identifier. Changelog resolves a commit before passing the resulting revision range to Git.
 
 ### 2. Path Traversal Protection (SEC-02 — fixed v0.1.0)
 
 The `is_safe_path()` function blocks:
 - Paths containing `..` directory traversal
 - Absolute paths outside the current working directory
+
+Discovery through `list`, `graph`, `validate-all`, and `ci` also checks the requested directory. Discovery preserves filename boundaries, including embedded newlines.
 
 Symlink trust boundary policy:
 - Symlinks are allowed only when their resolved target remains inside the current project directory.
@@ -24,7 +26,7 @@ The `--name` parameter in `spec init` and `spec init-interactive` is validated a
 
 ### 4. File Size Limiting
 
-The Kujo validate module enforces a 1MB maximum file size before parsing spec content.
+Conversion and validation enforce the 1 MiB limit on source spec files, including when an in-project symlink points to a larger file. Batch JSON validation in `validate-all` and `ci` uses bounded reads.
 
 ### 5. Structured Data Parsing
 
@@ -32,18 +34,20 @@ Spec input conversion uses Kujo's `parse_yaml`, `parse_toml`, and `parse_json` f
 
 ### 6. Output Path Guardrails
 
-When safe-write mode is enabled (`SPEC_SAFE_WRITE=on` or `auto` in `spec ci` context), output-producing commands restrict writes to the current project directory.
+When safe-write mode is enabled (`SPEC_SAFE_WRITE=on` or `auto` in `spec ci` context), output-producing commands check the lexical and resolved destination against the current project directory. This check covers dangling symlinks and their eventual targets. Invalid policy values fail when the corresponding safe-write or home-template policy is consulted.
 
 - Blocked by default: output paths outside project root (including resolved symlink escapes)
 - Allowed by explicit intent: pass `--unsafe-write` to override for a single command
 
+Lifecycle updates from `spec status --set` stage and validate a replacement before publishing it atomically. Updates through in-project symlinks replace the resolved file and preserve the symlink.
+
 ### 7. Generated Output Safety
 
-Mermaid and DOT graph labels are escaped before untrusted spec names are embedded. Render and export commands fail closed when the Kujo runtime fails or returns no output.
+Mermaid and DOT graph labels are escaped before untrusted spec names are embedded. GitHub CI annotations escape filename control characters and property separators. Render and export commands fail closed when the Kujo runtime fails or returns no output.
 
 ### 8. Conversion Cache Isolation
 
-Conversion caches use a per-user directory with mode `0700`. A symlinked or otherwise unsafe cache directory disables caching for that operation.
+Spec creates its conversion cache directory with mode `0700`. A symlink, different owner, or group or other access disables caching for that operation. Cache misses hash and parse the same snapshot, and publish the signature and JSON together through one atomic replacement.
 
 ### 9. Container Runtime Integrity
 
@@ -55,8 +59,8 @@ Docker builds that download a Kujo runtime with `KUJO_BIN_URL` must also supply 
 - **TOML parsing**: Nested tables and arrays of tables remain outside the supported subset.
 - **Kujo runtime**: The validate/render/export modules run via the Kujo language runtime, which may have its own security characteristics.
 - **No sandboxing**: Spec processing runs with the user's full permissions. Filesystem access is required for reading spec files.
-- **Temp files**: Temporary JSON files are created during processing (via `mktemp`). These are cleaned up on script exit.
-- **Path boundary scope**: Path checks are anchored to the caller's current working directory; run commands from the intended project root for strictest boundaries.
+- **Temp files**: Processing uses private temporary files and directories created by `mktemp`. An interrupted process can leave scratch files behind.
+- **Path boundary scope**: Path checks are anchored to the caller's current working directory. Run commands from the intended project root. Filesystem guardrails assume the caller controls the workspace and its temporary directory. They cannot guarantee containment against concurrent replacement of path components.
 
 ## Reporting a Vulnerability
 

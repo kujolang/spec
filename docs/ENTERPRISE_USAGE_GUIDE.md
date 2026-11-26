@@ -43,6 +43,8 @@ export SPEC_SAFE_WRITE=on
 
 Only use `--unsafe-write` in approved build steps.
 
+Run discovery and validation from the intended project root. `list`, `graph`, `validate-all`, and `ci` reject scan roots outside that directory. Safe-write checks also reject dangling symlinks whose targets fall outside the project.
+
 ### Template source policy
 
 For locked-down environments, block home-directory templates:
