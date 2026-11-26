@@ -186,6 +186,51 @@ def cache_conversion(source, output, fmt, signature):
             os.unlink(temporary)
 
 
+def toml_import_value(value):
+    if value is None:
+        raise ValueError("TOML does not support null")
+    if isinstance(value, dict):
+        fields = (f"{toml_import_value(key)} = {toml_import_value(item)}"
+                  for key, item in value.items())
+        return "{ " + ", ".join(fields) + " }"
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_import_value(item) for item in value) + "]"
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
+
+
+def json_import(output_format, name, output, source=None):
+    if source is not None and not safe_read_path(source):
+        sys.exit(1)
+    try:
+        if source is None:
+            data = sys.stdin.buffer.read(MAX_SOURCE_BYTES + 1)
+            if len(data) > MAX_SOURCE_BYTES:
+                raise ValueError("File too large")
+        else:
+            data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
+        spec = load_json(data)
+        if not isinstance(spec, dict):
+            raise ValueError("Expected a JSON object")
+        if name:
+            spec["name"] = name
+        if output_format == "json":
+            if source is None or name:
+                data = (json.dumps(spec, indent=2) + "\n").encode("utf-8")
+        elif output_format == "toml":
+            data = "".join(f"{toml_import_value(key)} = {toml_import_value(value)}\n"
+                           for key, value in spec.items()).encode("utf-8")
+        else:
+            # The documented YAML subset accepts JSON-style quoted keys and flow values.
+            data = "".join(f"{json.dumps(key, ensure_ascii=False)}: {json.dumps(value, ensure_ascii=False)}\n"
+                           for key, value in spec.items()).encode("utf-8")
+            if not data:
+                data = b"{}\n"
+        with open(output, "xb") as handle:
+            handle.write(data)
+    except (OSError, ValueError, RecursionError) as error:
+        fail(f"Error: {error}")
+
+
 def github_import(output_format, name, path):
     try:
         issue = json.load(sys.stdin)
@@ -590,7 +635,7 @@ def validate_spec(spec, strict):
                         errors.append(f"dependencies[{idx}] must have a string description")
                     elif len(dep["description"]) > 2000:
                         errors.append(f"dependencies[{idx}].description exceeds 2000 characters")
-                    if "type" in dep and dep["type"] not in {"blocks", "blocked_by"}:
+                    if "type" in dep and dep["type"] not in ("blocks", "blocked_by"):
                         errors.append(f"dependencies[{idx}].type must be blocks or blocked_by")
                     if "spec_id" in dep and not isinstance(dep["spec_id"], str):
                         errors.append(f"dependencies[{idx}].spec_id must be a string")
@@ -743,6 +788,9 @@ def main():
 
     elif cmd == "github-import":
         github_import(*sys.argv[2:])
+
+    elif cmd == "json-import":
+        json_import(*sys.argv[2:])
 
     elif cmd == "status-json":
         spec = read_metadata(sys.argv[2])

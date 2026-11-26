@@ -2,7 +2,7 @@
 # Command handlers extracted from scripts/spec for maintainability.
 # This file is sourced by scripts/spec and relies on shared globals/functions.
 
-spec_cmd_ci() {
+spec_cmd_ci() (
 	local dir="." strict=false format="text" max_files=0 fail_fast=false jobs=1
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -48,6 +48,10 @@ spec_cmd_ci() {
 	local total=0 passed=0 failed=0 truncated=false truncated_reason=""
 	local failures=()
 	local scan_files=()
+	local ci_tmp f
+	ci_tmp="$(make_spec_temp spec_ci -d)"
+	trap 'rm -rf -- "$ci_tmp"' EXIT
+	discover_specs "$dir" 5 "$max_files" > "$ci_tmp/paths" || die "Cannot scan directory: $dir"
 
 	while IFS= read -r -d '' f; do
 		[[ -z "$f" ]] && continue
@@ -57,14 +61,14 @@ spec_cmd_ci() {
 			break
 		fi
 		scan_files+=("$f")
-	done < <(discover_specs "$dir" 5 "$max_files")
+	done < "$ci_tmp/paths"
 
 	if [[ "${#scan_files[@]}" -eq 0 ]]; then
 		die "No spec files found in $dir"
 	fi
 
 	if [[ "$jobs" -eq 1 ]] || [[ "${#scan_files[@]}" -eq 1 ]]; then
-		local idx f valid batch_start=0 batch_end=0 batch_results=""
+		local idx valid batch_start=0 batch_end=0 batch_results=""
 		for ((idx=0; idx<${#scan_files[@]}; idx++)); do
 			f="${scan_files[$idx]}"
 			valid=false
@@ -76,7 +80,7 @@ spec_cmd_ci() {
 						[[ "${scan_files[$batch_end]}" == *.json ]] || break
 					done
 					batch_results="$(printf '%s\0' "${scan_files[@]:batch_start:batch_end-batch_start}" |
-						python3 "$HELPER" validate-ci-batch "$strict" "$fail_fast")" || batch_results=""
+						spec_python "$HELPER" validate-ci-batch "$strict" "$fail_fast")" || batch_results=""
 				fi
 				[[ "${batch_results:idx-batch_start:1}" == p ]] && valid=true
 			elif validate_file_quiet "$f" "$strict"; then
@@ -98,12 +102,11 @@ spec_cmd_ci() {
 		done
 	else
 		# Parallel path keeps deterministic ordering by writing indexed results.
-		local ci_tmp fail_marker
-		ci_tmp="$(make_spec_temp spec_ci -d)"
+		local fail_marker
 		fail_marker="$ci_tmp/fail.marker"
 		local pids=()
 		local launched=0
-		local f idx_this f_this
+		local idx_this f_this
 
 		for f in "${scan_files[@]}"; do
 			if $fail_fast && [[ -f "$fail_marker" ]]; then
@@ -158,8 +161,6 @@ spec_cmd_ci() {
 			truncated=true
 			[[ -z "$truncated_reason" ]] && truncated_reason="fail-fast"
 		fi
-
-		rm -rf "$ci_tmp" 2>/dev/null || true
 	fi
 
 	local truncated_json="false"
@@ -168,12 +169,12 @@ spec_cmd_ci() {
 	case "$format" in
 		json)
 			printf '%s\0' "${failures[@]+"${failures[@]}"}" |
-				python3 "$HELPER" ci-failures json "$total" "$passed" "$failed" "$truncated_json"
+				spec_python "$HELPER" ci-failures json "$total" "$passed" "$failed" "$truncated_json"
 			;;
 		github)
 			if [[ "$failed" -gt 0 ]]; then
 				printf '%s\0' "${failures[@]}" |
-					python3 "$HELPER" ci-failures github "$total" "$passed" "$failed" "$truncated_json"
+					spec_python "$HELPER" ci-failures github "$total" "$passed" "$failed" "$truncated_json"
 			fi
 			echo "::notice::Spec CI: $passed/$total passed"
 			[[ "$jobs" -gt 1 ]] && echo "::notice::Spec CI used parallel validation (--jobs=$jobs)"
@@ -204,7 +205,7 @@ spec_cmd_ci() {
 			;;
 	esac
 	[[ "$failed" -eq 0 ]]
-}
+)
 
 spec_cmd_template() {
 	local sub="${1:-list}"
@@ -292,11 +293,11 @@ spec_cmd_export_unified() (
 			spec_to_json "$f" "$tmp" true "$source_checksum"
 			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format")" || die "Envelope export failed: Kujo runtime returned an error"
 			[[ -n "$payload" ]] || die "Envelope export failed: Kujo runtime produced no output"
-			source_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
+			source_abs="$(spec_python -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
 			checksum="$(cat "$source_checksum")"
 			generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
 			schema_version="${SPEC_SCHEMA_VERSION:-1.0.0}"
-			envelope_json="$(printf '%s' "$payload" | python3 -c '
+			envelope_json="$(printf '%s' "$payload" | spec_python -c '
 import json, sys
 source_file = sys.argv[1]
 schema_version = sys.argv[2]
@@ -366,10 +367,10 @@ spec_cmd_init_interactive() {
 	enforce_safe_write_path "$out" false
 
 	# Create spec with collected values
-	local uuid; uuid="$(python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
+	local uuid; uuid="$(spec_python -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
 	local now; now="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || now=""
 
-	python3 - "$out" "$name" "$goal" "$uuid" "$now" "$priority" "$tags" <<'PY'
+	spec_python - "$out" "$name" "$goal" "$uuid" "$now" "$priority" "$tags" <<'PY'
 import json
 import sys
 
@@ -416,18 +417,17 @@ spec_cmd_doctor() {
 	# Check Python 3
 	echo -n "Python 3:     "
 	if command -v python3 &>/dev/null; then
-		echo "✅ $(python3 --version 2>&1)"
+		echo "✅ $(spec_python --version 2>&1)"
 	else
 		echo "❌ Not found"
 	fi
 
 	# Check PyYAML
 	echo -n "PyYAML:       "
-	if python3 -c "import yaml" 2>/dev/null; then
+	if spec_python -c "import yaml" 2>/dev/null; then
 		echo "✅ installed"
 	else
-		echo "⚠️  Not installed (needed for YAML specs)"
-		echo "   Fix: pip3 install pyyaml"
+		echo "⚠️  Unavailable to isolated Python (optional for YAML creation)"
 	fi
 
 	# Check spec script
@@ -537,7 +537,7 @@ spec_cmd_graph() (
 	[[ "${#json_files[@]}" -gt 0 ]] || die "No spec files found"
 	case "$format" in
 		mermaid|dot)
-			printf '%s\0' "${json_files[@]+"${json_files[@]}"}" | python3 "$HELPER" graph "$format"
+			printf '%s\0' "${json_files[@]+"${json_files[@]}"}" | spec_python "$HELPER" graph "$format"
 			;;
 		*) die "Unknown format: $format. Use mermaid or dot." ;;
 	esac

@@ -124,6 +124,10 @@ CI scaling controls:
 | `template:<name>` | `spec init --from template:feature` | Use a template from `specs/templates/` |
 | `github:<o/r/n>` | `spec init --from github:kujolang/spec/1` | Fetch a GitHub issue (requires `gh` CLI) |
 
+Both JSON import sources require a JSON object and accept up to 1 MiB. Import
+with `--name` to replace the source name. TOML output requires values that TOML
+can represent, so JSON `null` is rejected for that format.
+
 ### Export Envelope Format
 
 Use `spec export --format envelope` when automation needs payload + metadata in one JSON object.

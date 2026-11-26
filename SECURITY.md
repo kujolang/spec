@@ -8,6 +8,10 @@ Spec reads user-provided spec files (YAML, TOML, JSON) and validates them agains
 
 Filenames are passed to Kujo and Python helpers as arguments. GitHub issue imports pass the output path to a fixed serializer and terminate GitHub CLI option parsing before the issue identifier. Changelog resolves a commit before passing the resulting revision range to Git.
 
+Spec runs its Python helpers in isolated mode. Python excludes the workspace,
+`PYTHONPATH`, and user-site packages from module discovery. Optional PyYAML
+support uses a package available to that interpreter in isolated mode.
+
 ### 2. Path Traversal Protection (SEC-02 — fixed v0.1.0)
 
 The `is_safe_path()` function blocks:
@@ -28,6 +32,10 @@ The `--name` parameter in `spec init` and `spec init-interactive` is validated a
 
 Conversion and validation enforce the 1 MiB limit on source spec files, including when an in-project symlink points to a larger file. Batch JSON validation in `validate-all` and `ci` uses bounded reads.
 
+JSON imports enforce the same limit for regular files and standard input.
+They parse a JSON object before creating the destination, and preserve literal
+keys when writing YAML or TOML.
+
 ### 5. Structured Data Parsing
 
 Spec input conversion uses Kujo's `parse_yaml`, `parse_toml`, and `parse_json` functions. Spec content is never evaluated as executable code. Interactive YAML creation uses `yaml.safe_dump()` when PyYAML is available and a JSON-compatible YAML subset otherwise.
@@ -44,6 +52,9 @@ Lifecycle updates from `spec status --set` stage and validate a replacement befo
 ### 7. Generated Output Safety
 
 Mermaid and DOT graph labels are escaped before untrusted spec names are embedded. GitHub CI annotations escape filename control characters and property separators. Render and export commands fail closed when the Kujo runtime fails or returns no output.
+
+`ci` and `validate-all` reject incomplete discovery when the scanner reports
+an error. Malformed dependency records count as failures for their own files.
 
 ### 8. Conversion Cache Isolation
 

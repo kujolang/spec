@@ -1047,5 +1047,109 @@ else
 	FAIL=$((FAIL+1))
 fi
 
+check "Python helpers ignore workspace and PYTHONPATH module collisions" \
+	bash -c '
+		set -eu
+		mkdir "$2/isolated-python"
+		cd "$2/isolated-python"
+		touch json.py uuid.py
+		export PYTHONPATH="$PWD"
+		"$1" version --json
+		"$1" init --name Example --format json
+		PYTHONPATH= python3 -I -c \
+			"import json, uuid; value = uuid.UUID(json.load(open(\"spec.json\"))[\"id\"]); assert value.version == 4 and value.hex != \"00000000000040008000000000000000\""
+	' _ "$SPEC" "$TMPDIR"
+
+if python3 - "$SPEC" <<'PYTHON'
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="spec_json_import_") as tmp:
+    root = pathlib.Path(tmp)
+    original = {"name": "Example", "goal": "Preserve typed data", "section.note": "🧪",
+                "metadata": {"nested.key": ["text", True]}}
+    data = json.dumps(original).encode()
+    (root / "source.json").write_bytes(data)
+    for index, source in enumerate(("-", "json:source.json")):
+        for fmt in ("json", "yaml", "toml"):
+            out = f"import-{index}.{fmt}"
+            subprocess.run([sys.argv[1], "init", "--from", source, "--name", "Renamed",
+                            "--format", fmt, "--output", out], input=data, cwd=root, check=True)
+            converted = f"{out}.json"
+            subprocess.run([sys.argv[1], "convert", out, "--to", "json", "--output", converted],
+                           cwd=root, check=True)
+            assert json.loads((root / converted).read_bytes()) == dict(original, name="Renamed")
+
+    (root / "big.json").write_bytes(data + b" " * 1048576)
+    os.mkfifo(root / "pipe.json")
+    for source, payload in (("-", data + b" " * 1048576), ("-", b"[]"),
+                            ("json:big.json", None), ("json:pipe.json", None)):
+        for fmt in ("json", "yaml", "toml"):
+            result = subprocess.run([sys.argv[1], "init", "--from", source, "--format", fmt,
+                                     "--output", "rejected"], input=payload, cwd=root,
+                                    capture_output=True, timeout=10)
+            assert result.returncode == 1 and not (root / "rejected").exists(), result
+PYTHON
+then
+	echo "  PASS: JSON imports bound input and preserve literal keys across formats"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: JSON import handling"
+	FAIL=$((FAIL+1))
+fi
+
+if python3 - "$SPEC" <<'PYTHON'
+import json
+import os
+import pathlib
+import shlex
+import subprocess
+import sys
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="spec_ci_errors_") as tmp:
+    root = pathlib.Path(tmp)
+    valid = {"name": "Example", "goal": "Preserve scan results"}
+    (root / "a.spec.json").write_text(json.dumps(valid))
+    (root / "b.spec.json").write_text(json.dumps(dict(
+        valid, dependencies=[{"description": "Example", "type": ["blocks"]}])))
+    (root / "c.spec.json").write_text(json.dumps(valid))
+
+    def run(*args, env=None):
+        result = subprocess.run([sys.argv[1], *args], cwd=root, capture_output=True,
+                                text=True, env=env)
+        assert result.returncode == 1, result
+        return result
+
+    report = {"total": 3, "passed": 2, "failed": 1, "failures": ["./b.spec.json"],
+              "truncated": False}
+    for jobs in ("1", "2"):
+        result = run("ci", "--format", "json", "--jobs", jobs)
+        assert json.loads(result.stdout) == report and not result.stderr, result
+    assert "2 passed, 1 failed, 3 total" in run("validate-all", ".").stdout
+
+    # Inject an I/O failure after discovery emits one path to test the caller's status check.
+    shim = root / "python3"
+    shim.write_text("#!/bin/sh\n"
+                    'if [ "$3" = discover-specs ]; then printf "./a.spec.json\\000"; exit 1; fi\n'
+                    f'exec {shlex.quote(sys.executable)} "$@"\n')
+    shim.chmod(0o700)
+    env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}")
+    for args in (("ci", "--format", "json"), ("validate-all", ".")):
+        result = run(*args, env=env)
+        assert not result.stdout and "Cannot scan directory" in result.stderr, result
+PYTHON
+then
+	echo "  PASS: batch validators isolate malformed records and fail closed on incomplete scans"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: batch validation failure handling"
+	FAIL=$((FAIL+1))
+fi
+
 # Summary
 report_results "Results"

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep the workspace, user site, and PYTHONPATH out of helper imports.
+spec_python() {
+	python3 -I "$@"
+}
+
 launcher="$0"
 if [[ -L "$launcher" ]]; then
-	launcher="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$launcher")"
+	launcher="$(spec_python -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$launcher")"
 fi
 SCRIPT_DIR="$(cd "$(dirname "$launcher")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -63,13 +68,13 @@ make_spec_temp() {
 }
 
 is_safe_path() {
-	python3 "$HELPER" safe-path "$1"
+	spec_python "$HELPER" safe-path "$1"
 }
 
 spec_to_json() (
 	local f="$1" out="$2" use_cache="${3:-true}" checksum_output="${4:-}" format label snapshot signature
 	case "$f" in
-		*.json) python3 "$HELPER" copy-spec "$f" "$out" "$checksum_output"; return ;;
+		*.json) spec_python "$HELPER" copy-spec "$f" "$out" "$checksum_output"; return ;;
 		*.yml|*.yaml) format=yaml; label=YAML ;;
 		*.toml) format=toml; label=TOML ;;
 		*) die "Unknown format: $f (use .json, .yml, .yaml, or .toml)" ;;
@@ -77,17 +82,17 @@ spec_to_json() (
 
 	snapshot="$(make_spec_temp spec_conversion)"
 	trap 'rm -f -- "$snapshot"' EXIT
-	signature="$(python3 "$HELPER" prepare-conversion "$f" "$snapshot" "$out" "$format" "$KUJO_BIN" "$PROJECT_DIR/src/convert.kujo" "$use_cache" "$checksum_output")" || return 1
+	signature="$(spec_python "$HELPER" prepare-conversion "$f" "$snapshot" "$out" "$format" "$KUJO_BIN" "$PROJECT_DIR/src/convert.kujo" "$use_cache" "$checksum_output")" || return 1
 	[[ "$signature" != "hit" ]] || return 0
 	run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$snapshot" --from "$format" --to json > "$out" \
 		|| die "$label parsing failed for $f"
 	if [[ "$signature" != "-" ]]; then
-		python3 "$HELPER" cache-conversion "$f" "$out" "$format" "$signature"
+		spec_python "$HELPER" cache-conversion "$f" "$out" "$format" "$signature"
 	fi
 )
 
 discover_specs() {
-	python3 "$HELPER" discover-specs "$1" "$2" "${3:-0}"
+	spec_python "$HELPER" discover-specs "$1" "$2" "${3:-0}"
 }
 
 # validate_file_quiet — fast validation path for batched commands.
@@ -97,7 +102,7 @@ validate_file_quiet() {
 	local f="$1" strict="${2:-false}"
 	[[ -f "$f" ]] || return 1
 	if [[ "$f" == *.json ]]; then
-		python3 "$HELPER" validate-ci-json "$f" "$strict"
+		spec_python "$HELPER" validate-ci-json "$f" "$strict"
 		return $?
 	fi
 
@@ -105,7 +110,7 @@ validate_file_quiet() {
 	local tmp
 	tmp="$(make_spec_temp spec_validate_quiet)"
 	spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
-	python3 "$HELPER" validate-quiet "$tmp" "$strict" >/dev/null 2>&1
+	spec_python "$HELPER" validate-quiet "$tmp" "$strict" >/dev/null 2>&1
 	local rc=$?
 	rm -f "$tmp" 2>/dev/null
 	return "$rc"
@@ -162,7 +167,7 @@ enforce_safe_write_path() {
 	case "$target" in
 		/dev/stdout|/dev/stderr) return 0 ;;
 	esac
-	python3 "$HELPER" safe-write-path "$target" \
+	spec_python "$HELPER" safe-write-path "$target" \
 		|| die "Unsafe write path denied: $target. Set --unsafe-write to override."
 }
 
@@ -288,7 +293,7 @@ cmd_init() {
 	validate_spec_name "$name"
 
 	# Generate metadata once (DRY)
-	local uuid; uuid="$(python3 -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
+	local uuid; uuid="$(spec_python -c "import uuid; print(str(uuid.uuid4()))" 2>/dev/null)" || uuid="00000000-0000-4000-8000-000000000000"
 	local now; now="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || now=""
 
 	if [[ "$fmt" == "json" ]]; then
@@ -340,85 +345,13 @@ _init_from() {
 	local src="$1" out="$2" fmt="$3" name="${4:-}" strict_template_source="${5:-false}"
 	case "$src" in
 		-)
-			# Read spec JSON from stdin
-			if [[ "$fmt" == "json" ]]; then
-				python3 -c '
-import json, sys
-name, out = sys.argv[1], sys.argv[2]
-spec = json.load(sys.stdin)
-if name:
-	spec["name"] = name
-with open(out, "w") as fh:
-	json.dump(spec, fh, indent=2)
-	fh.write("\n")
-' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
-			elif [[ "$fmt" == "toml" ]]; then
-				python3 -c '
-import json, sys
-name, out = sys.argv[1], sys.argv[2]
-spec = json.load(sys.stdin)
-if name:
-	spec["name"] = name
-lines = [k+" = "+json.dumps(v) for k,v in spec.items()]
-open(out,"w").write("\n".join(lines)+"\n")
-' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
-			else
-				python3 -c '
-import json, sys
-name, out = sys.argv[1], sys.argv[2]
-spec = json.load(sys.stdin)
-if name:
-	spec["name"] = name
-lines = []
-for k, v in spec.items():
-	if isinstance(v, str):
-		lines.append(f"{k}: {json.dumps(v)}")
-	elif isinstance(v, list) and all(isinstance(item, str) for item in v):
-		lines.append(f"{k}:")
-		for item in v:
-			lines.append(f"  - {json.dumps(item)}")
-	else:
-		lines.append(f"{k}: {json.dumps(v)}")
-open(out,"w").write("\n".join(lines)+"\n")
-' "$name" "$out" || die "Failed to parse stdin as JSON or write output"
-			fi
+			spec_python "$HELPER" json-import "$fmt" "$name" "$out" \
+				|| die "Cannot import JSON from stdin"
 			;;
 		json:*)
 			local jf="${src#json:}"
-			[[ -f "$jf" ]] || die "JSON file not found: $jf"
-			is_safe_path "$jf" || exit 1
-			# Convert JSON input to target format
-			if [[ "$fmt" == "json" ]]; then python3 "$HELPER" copy-spec "$jf" "$out"
-			elif [[ "$fmt" == "toml" ]]; then
-				python3 - "$jf" "$out" <<'PY'
-import json
-import sys
-jf, out = sys.argv[1], sys.argv[2]
-d=json.load(open(jf))
-lines=[k+' = '+json.dumps(v) for k,v in d.items()]
-open(out,'w').write('\n'.join(lines)+'\n')
-PY
-				[[ $? -eq 0 ]] || die "JSON import failed"
-			else
-				python3 - "$jf" "$out" <<'PY'
-import json
-import sys
-jf, out = sys.argv[1], sys.argv[2]
-d=json.load(open(jf))
-lines = []
-for k, v in d.items():
-	if isinstance(v, str):
-		lines.append(f"{k}: {json.dumps(v)}")
-	elif isinstance(v, list) and all(isinstance(item, str) for item in v):
-		lines.append(f"{k}:")
-		for item in v:
-			lines.append(f"  - {json.dumps(item)}")
-	else:
-		lines.append(f"{k}: {json.dumps(v)}")
-open(out,'w').write('\n'.join(lines)+'\n')
-PY
-				[[ $? -eq 0 ]] || die "JSON import failed"
-			fi
+			spec_python "$HELPER" json-import "$fmt" "$name" "$out" "$jf" \
+				|| die "Cannot import JSON file: $jf"
 			;;
 		template:*)
 			local tname="${src#template:}"
@@ -449,7 +382,7 @@ PY
 				tmp_json="$(make_spec_temp spec_template_src)"
 				tmp_named="$(make_spec_temp spec_template_named)"
 				spec_to_json "$tfile" "$tmp_json" || { rm -f "$tmp_json" "$tmp_named"; die "Template conversion failed"; }
-				python3 - "$tmp_json" "$tmp_named" "$name" <<'PY' || { rm -f "$tmp_json" "$tmp_named"; die "Template name replacement failed"; }
+				spec_python - "$tmp_json" "$tmp_named" "$name" <<'PY' || { rm -f "$tmp_json" "$tmp_named"; die "Template name replacement failed"; }
 import json
 import sys
 src, dst, name = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -474,7 +407,7 @@ PY
 				local target_fmt="$fmt"
 				[[ "$target_fmt" == "yml" ]] && target_fmt="yaml"
 				if [[ "$source_fmt" == "$target_fmt" ]]; then
-					python3 "$HELPER" copy-spec "$tfile" "$out"
+					spec_python "$HELPER" copy-spec "$tfile" "$out"
 				else
 					local tmp_template_json
 					tmp_template_json="$(make_spec_temp spec_template_convert)"
@@ -497,7 +430,7 @@ PY
 			fi
 			command -v gh &>/dev/null || die "GitHub CLI (gh) required for --from github:. Install: brew install gh"
 			gjson="$(gh "${gh_args[@]}" -- "$gspec" 2>/dev/null)" || die "Failed to fetch GitHub issue: ${src#github:}"
-			python3 "$HELPER" github-import "$fmt" "$name" "$out" <<< "$gjson" || die "GitHub issue conversion failed"
+			spec_python "$HELPER" github-import "$fmt" "$name" "$out" <<< "$gjson" || die "GitHub issue conversion failed"
 			;;
 		*) die "Unknown --from source: $src (use -, json:<file>, template:<name>, or github:<o/r/num>)" ;;
 	esac
@@ -514,7 +447,7 @@ cmd_validate() (
         trap 'rm -f -- "$tmp"' EXIT
         spec_to_json "$f" "$tmp"
         local result; result="$(run_kujo run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
-        python3 "$HELPER" validation-result "$tmp" "$strict" "$json_out" "$quiet" <<< "$result" || exit 1
+        spec_python "$HELPER" validation-result "$tmp" "$strict" "$json_out" "$quiet" <<< "$result" || exit 1
 )
 
 cmd_render() (
@@ -599,7 +532,7 @@ cmd_list() (
 			idx=$((idx + 1))
 		done
 
-		python3 -c '
+		spec_python -c '
 import json
 import sys
 
@@ -625,7 +558,7 @@ while i + 1 < len(args):
 print(json.dumps(out, indent=2))
 ' "${pair_args[@]}" 2>/dev/null || echo "[]"
 	else
-		local output; output="$(python3 "$HELPER" list "${json_files[@]}" 2>/dev/null)" || true
+		local output; output="$(spec_python "$HELPER" list "${json_files[@]}" 2>/dev/null)" || true
 		printf "%-50s %-12s %-12s %s\n" "FILE" "PRIORITY" "STATUS" "NAME"
 		printf "%-50s %-12s %-12s %s\n" "----" "--------" "------" "----"
 		local line_idx=0
@@ -646,6 +579,7 @@ cmd_validate_all() (
 	local passed=0 failed=0
 	local tmpdir; tmpdir="$(make_spec_temp spec_validate_all -d)"
 	trap 'rm -rf -- "$tmpdir"' EXIT
+	discover_specs "$dir" 5 > "$tmpdir/paths" || die "Cannot scan directory: $dir"
 	local json_files=()
 	local idx=0
 	while IFS= read -r -d '' f; do
@@ -667,14 +601,14 @@ cmd_validate_all() (
 				idx=$((idx + 1))
 				;;
 		esac
-	done < <(discover_specs "$dir" 5)
+	done < "$tmpdir/paths"
 	if [[ "${#json_files[@]}" -eq 0 && "$failed" -eq 0 ]]; then
 		die "No spec files found in $dir"
 	fi
 	if [[ "${#json_files[@]}" -gt 0 ]]; then
 		local batch batch_passed batch_failed
 		batch="$(printf '%s\0' "${json_files[@]}" |
-			python3 "$HELPER" validate-many "$tmpdir" false 2>/dev/null)" || true
+			spec_python "$HELPER" validate-many "$tmpdir" false 2>/dev/null)" || true
 		IFS='|' read -r batch_passed batch_failed <<< "$batch"
 		[[ "$batch_passed" =~ ^[0-9]+$ ]] || batch_passed=0
 		[[ "$batch_failed" =~ ^[0-9]+$ ]] || batch_failed="${#json_files[@]}"
@@ -703,7 +637,7 @@ cmd_search() {
 			IFS= read -r -d '' name || name=""
 			IFS= read -r -d '' pri2 || pri2=""
 			IFS= read -r -d '' tags || tags=""
-		} < <(python3 "$HELPER" search-fields "$tmp" 2>/dev/null)
+		} < <(spec_python "$HELPER" search-fields "$tmp" 2>/dev/null)
 		rm -f "$tmp" 2>/dev/null
 
 		local match=true
@@ -733,7 +667,7 @@ cmd_status() (
 		[[ "$new_status" =~ ^(draft|ready|in-progress|review|completed|archived)$ ]] || die "Invalid status: $new_status"
 		# Stage beside the resolved target so publication is atomic and in-project
 		# symlinks continue to point at the updated spec.
-		IFS= read -r -d '' target < <(python3 "$HELPER" resolved-read-path "$f") || exit 1
+		IFS= read -r -d '' target < <(spec_python "$HELPER" resolved-read-path "$f") || exit 1
 		work="$(mktemp -d "${target%/*}/.spec-status.XXXXXX")" || die "Cannot stage status update: $f"
 	else
 		work="$(make_spec_temp spec_status -d)"
@@ -743,19 +677,19 @@ cmd_status() (
 	if [[ -n "$new_status" ]]; then
 		use_cache=false
 		source="$work/original.$ext"
-		python3 "$HELPER" copy-spec "$target" "$source" || die "Cannot read original spec: $f"
+		spec_python "$HELPER" copy-spec "$target" "$source" || die "Cannot read original spec: $f"
 	fi
 
 	local parsed="$work/parsed.json" cur
 	spec_to_json "$source" "$parsed" "$use_cache" || die "Cannot parse $f"
-	cur="$(python3 "$HELPER" get "$parsed" status draft 2>/dev/null)" || cur="draft"
+	cur="$(spec_python "$HELPER" get "$parsed" status draft 2>/dev/null)" || cur="draft"
 	if [[ -z "$new_status" ]]; then
 		echo "Status: $cur"
 		return
 	fi
 
 	local changed="$work/changed.json" candidate="$work/candidate.$ext" verified="$work/verified.json"
-	python3 "$HELPER" status-json "$parsed" "$new_status" > "$changed" || die "Failed to update status: $f"
+	spec_python "$HELPER" status-json "$parsed" "$new_status" > "$changed" || die "Failed to update status: $f"
 	if [[ "$ext" == json ]]; then
 		candidate="$changed"
 	else
@@ -765,9 +699,9 @@ cmd_status() (
 
 	spec_to_json "$candidate" "$verified" false || die "Failed to parse updated spec: $f"
 	"$0" validate "$verified" --quiet 2>/dev/null || die "Status update produced an invalid spec. Original file left unchanged."
-	[[ "$(python3 "$HELPER" get "$verified" status '')" == "$new_status" ]] ||
+	[[ "$(spec_python "$HELPER" get "$verified" status '')" == "$new_status" ]] ||
 		die "Status update did not persist requested value. Original file left unchanged."
-	python3 "$HELPER" commit-status "$f" "$target" "$source" "$candidate" || exit 1
+	spec_python "$HELPER" commit-status "$f" "$target" "$source" "$candidate" || exit 1
 	echo "Status updated: $cur → $new_status"
 )
 
@@ -809,7 +743,7 @@ cmd_info() (
 	spec_to_json "$f" "$tmp"
 
 	if $json_out; then
-		python3 -c "
+		spec_python -c "
 import json, sys
 with open(sys.argv[2]) as source:
 	d = json.load(source)
@@ -838,7 +772,7 @@ print(json.dumps(info, indent=2))
 			IFS= read -r -d '' ev || ev=0
 			IFS= read -r -d '' rk || rk=0
 			IFS= read -r -d '' tags || tags=""
-		} < <(python3 "$HELPER" info-fields "$tmp")
+		} < <(spec_python "$HELPER" info-fields "$tmp")
 		IFS='|' read -r name goal status pri ver id <<< "$fields"
 
 		echo "File:       $f"
@@ -897,7 +831,7 @@ cmd_diff() {
 	local tb; tb="$(make_spec_temp spec_diff_b)"
 	spec_to_json "$a" "$ta" || die "Cannot parse $a"
 	spec_to_json "$b" "$tb" || die "Cannot parse $b"
-	python3 -c "
+	spec_python -c "
 import json, sys
 da = json.load(open(sys.argv[1]))
 db = json.load(open(sys.argv[2]))
@@ -925,7 +859,7 @@ cmd_export_eval() (
 	local tmp; tmp="$(make_spec_temp spec_eval)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
-	python3 -c "
+	spec_python -c "
 import json, sys
 spec = json.load(open(sys.argv[1]))
 suite = {'name': spec.get('name', 'spec'), 'description': spec.get('goal', ''), 'tests': []}
