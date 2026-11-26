@@ -13,6 +13,7 @@
   },
   "files": [
     "scripts/spec",
+    "scripts/commands/maintenance.sh",
     "scripts/spec_helpers.py",
     "scripts/spec_yaml_to_json.py",
     "scripts/spec_toml_to_json.py",

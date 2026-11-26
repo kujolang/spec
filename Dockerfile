@@ -44,7 +44,6 @@ COPY kennel.toml /opt/kujo-spec/
 # Create entrypoint wrapper
 RUN printf '#!/bin/bash\n\
 export KUJO_BIN="${KUJO_BIN:-/usr/local/bin/kujo}"\n\
-cd /opt/kujo-spec\n\
 exec bash /opt/kujo-spec/scripts/spec "$@"\n' > /usr/local/bin/spec && \
 	chmod +x /usr/local/bin/spec
 

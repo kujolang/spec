@@ -5,6 +5,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     env:
@@ -22,6 +25,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - name: Set up Kujo runtime
         run: bash .github/scripts/install-kujo-runtime.sh "$KUJO_RUNTIME_VERSION" "$RUNNER_TEMP/kujo-runtime/bin"
       - name: Set benchmark profile
@@ -46,7 +51,12 @@ jobs:
           ./scripts/spec ci examples --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["failed"] == 0'
       - name: Packaging checks
         run: |
-          INSTALL_DIR="$PWD/.tmp_install_bin" INSTALL_SOURCE_DIR="$PWD" bash scripts/install.sh >/dev/null
+          install_root="$(mktemp -d)"
+          trap 'rm -rf "$install_root"' EXIT
+          mkdir "$install_root/home"
+          HOME="$install_root/home" INSTALL_DIR="$install_root/bin" INSTALL_SOURCE_DIR="$PWD" bash scripts/install.sh >/dev/null
+          HOME="$install_root/home" "$install_root/bin/spec" version --json >/dev/null
+          HOME="$install_root/home" "$install_root/bin/spec" validate fixtures/valid_minimal.json --strict --json | python3 -c 'import json,sys; assert json.load(sys.stdin)["valid"]'
           if command -v ruby >/dev/null 2>&1; then
             ruby -c homebrew/spec.rb
           else

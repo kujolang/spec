@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Check resolved write destinations even when output files or directories are missing.
+- Validate and cache the same bounded conversion input, and publish cache entries atomically.
+- Preserve unusual CI filenames through discovery, JSON reports, and GitHub annotations.
+- Install the startup module with the shell, npm, and Homebrew entry points. Run the container CLI in the mounted project directory.
+
 ## [1.0.2] - 2026-10-21
 
 - Update Node.js requirements for package and release tooling.

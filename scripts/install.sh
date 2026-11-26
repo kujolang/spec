@@ -15,6 +15,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+if [[ ! "$SPEC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	echo "Error: SPEC_VERSION must be an explicit version" >&2
+	exit 1
+fi
+
 echo "Spec Installer v${SPEC_VERSION}"
 echo ""
 
@@ -31,8 +36,9 @@ check_dep python3
 check_dep git
 
 # Determine install method: clone repo or download script only
-TMPDIR="$(mktemp -d)"
-trap "rm -rf $TMPDIR" EXIT
+install_tmp="$(mktemp -d)"
+cleanup() { rm -rf -- "$install_tmp"; }
+trap cleanup EXIT
 
 echo "Cloning kujolang/spec..."
 SOURCE_REPO=""
@@ -44,12 +50,12 @@ if [[ -n "$INSTALL_SOURCE_DIR" ]]; then
 	fi
 	SOURCE_REPO="$INSTALL_SOURCE_DIR"
 	echo "Using source from INSTALL_SOURCE_DIR: $SOURCE_REPO"
-elif git clone --depth 1 "$REPO_URL" "$TMPDIR/repo" 2>/dev/null; then
-	SOURCE_REPO="$TMPDIR/repo"
+elif git clone --depth 1 --single-branch --branch "v$SPEC_VERSION" "$REPO_URL" "$install_tmp/repo" 2>/dev/null; then
+	SOURCE_REPO="$install_tmp/repo"
 else
 	# Local fallback for offline installs from an existing checkout
 	local_repo="$(cd "$SCRIPT_DIR/.." && pwd)"
-	if [[ -f "$local_repo/scripts/spec" ]]; then
+	if [[ -f "$local_repo/scripts/spec" && -f "$local_repo/VERSION" && "$(cat "$local_repo/VERSION")" == "$SPEC_VERSION" ]]; then
 		echo -e "${YELLOW}Clone failed; falling back to local checkout at $local_repo${NC}"
 		SOURCE_REPO="$local_repo"
 	else
@@ -70,23 +76,29 @@ if [[ ! -d "$INSTALL_DIR" ]]; then
 	fi
 fi
 
-# Copy the spec script to install directory
-if [[ -w "$INSTALL_DIR" ]]; then
-	cp "$SOURCE_REPO/scripts/spec" "$INSTALL_DIR/spec"
-	chmod +x "$INSTALL_DIR/spec"
-else
-	echo "Need sudo to install to $INSTALL_DIR"
-	sudo cp "$SOURCE_REPO/scripts/spec" "$INSTALL_DIR/spec"
-	sudo chmod +x "$INSTALL_DIR/spec"
+SUPPORT_DIR="$HOME/.local/share/kujo-spec"
+mkdir -p "$SUPPORT_DIR/scripts/commands" "$SUPPORT_DIR/schema"
+cp "$SOURCE_REPO/scripts/spec" "$SOURCE_REPO/scripts/spec_helpers.py" \
+	"$SOURCE_REPO/scripts/spec_yaml_to_json.py" "$SOURCE_REPO/scripts/spec_toml_to_json.py" "$SUPPORT_DIR/scripts/"
+cp "$SOURCE_REPO/scripts/commands/maintenance.sh" "$SUPPORT_DIR/scripts/commands/"
+cp -R "$SOURCE_REPO/src" "$SUPPORT_DIR/"
+cp "$SOURCE_REPO/schema/spec.schema.json" "$SUPPORT_DIR/schema/"
+if [[ -d "$SOURCE_REPO/specs/templates" ]]; then
+	mkdir -p "$SUPPORT_DIR/specs"
+	cp -R "$SOURCE_REPO/specs/templates" "$SUPPORT_DIR/specs/"
 fi
 
-# Copy support scripts
-SUPPORT_DIR="$HOME/.local/share/kujo-spec"
-mkdir -p "$SUPPORT_DIR"
-cp "$SOURCE_REPO/scripts/spec_yaml_to_json.py" "$SUPPORT_DIR/"
-cp "$SOURCE_REPO/scripts/spec_toml_to_json.py" "$SUPPORT_DIR/"
-cp -r "$SOURCE_REPO/src" "$SUPPORT_DIR/"
-cp "$SOURCE_REPO/schema/spec.schema.json" "$SUPPORT_DIR/"
+cat > "$install_tmp/spec" <<'SH'
+#!/usr/bin/env bash
+exec bash "$HOME/.local/share/kujo-spec/scripts/spec" "$@"
+SH
+
+if [[ -w "$INSTALL_DIR" ]]; then
+	install -m 0755 "$install_tmp/spec" "$INSTALL_DIR/spec"
+else
+	echo "Need sudo to install to $INSTALL_DIR"
+	sudo install -m 0755 "$install_tmp/spec" "$INSTALL_DIR/spec"
+fi
 
 echo ""
 echo -e "${GREEN}Spec installed to $INSTALL_DIR/spec${NC}"
