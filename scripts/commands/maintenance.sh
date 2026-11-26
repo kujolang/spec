@@ -99,7 +99,7 @@ spec_cmd_ci() {
 	else
 		# Parallel path keeps deterministic ordering by writing indexed results.
 		local ci_tmp fail_marker
-		ci_tmp="$(mktemp -d -t spec_ci_XXXXXX)"
+		ci_tmp="$(make_spec_temp spec_ci -d)"
 		fail_marker="$ci_tmp/fail.marker"
 		local pids=()
 		local launched=0
@@ -285,7 +285,7 @@ spec_cmd_export_unified() (
 		envelope)
 			[[ "$payload_format" =~ ^(agent|dispatch)$ ]] || die "Invalid --payload-format: $payload_format (use agent or dispatch)"
 			local tmp payload source_abs checksum generated_at schema_version envelope_json
-			tmp="$(mktemp -t spec_export_env_XXXXXX.json)"
+			tmp="$(make_spec_temp spec_export_env)"
 			trap 'rm -f -- "$tmp"' EXIT
 			spec_to_json "$f" "$tmp"
 			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format")" || die "Envelope export failed: Kujo runtime returned an error"
@@ -522,7 +522,7 @@ spec_cmd_graph() (
 	is_safe_path "$dir" || exit 1
 
 	# Build a graph from spec parent_id relationships
-	local tmpdir; tmpdir="$(mktemp -d)"
+	local tmpdir; tmpdir="$(make_spec_temp spec_scan -d)"
 	trap 'rm -rf -- "$tmpdir"' EXIT
 	local json_files=()
 	local f jf

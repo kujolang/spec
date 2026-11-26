@@ -56,6 +56,12 @@ run_kujo() {
 	fi
 }
 
+make_spec_temp() {
+	local prefix="$1"
+	shift
+	mktemp "$@" "${TMPDIR:-/tmp}/$prefix.XXXXXX"
+}
+
 is_safe_path() {
 	python3 "$HELPER" safe-path "$1"
 }
@@ -69,7 +75,7 @@ spec_to_json() (
 		*) die "Unknown format: $f (use .json, .yml, .yaml, or .toml)" ;;
 	esac
 
-	snapshot="$(mktemp -t spec_conversion_XXXXXX)"
+	snapshot="$(make_spec_temp spec_conversion)"
 	trap 'rm -f -- "$snapshot"' EXIT
 	signature="$(python3 "$HELPER" prepare-conversion "$f" "$snapshot" "$out" "$format" "$KUJO_BIN" "$PROJECT_DIR/src/convert.kujo" "$use_cache")" || return 1
 	[[ "$signature" != "hit" ]] || return 0
@@ -97,7 +103,7 @@ validate_file_quiet() {
 
 	is_safe_path "$f" || return 1
 	local tmp
-	tmp="$(mktemp -t spec_validate_quiet_XXXXXX.json)"
+	tmp="$(make_spec_temp spec_validate_quiet)"
 	spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
 	python3 "$HELPER" validate-quiet "$tmp" "$strict" >/dev/null 2>&1
 	local rc=$?
@@ -440,8 +446,8 @@ PY
 			# Copy template and replace name if provided
 			if [[ -n "$name" ]]; then
 				local tmp_json tmp_named
-				tmp_json="$(mktemp -t spec_template_src_XXXXXX.json)"
-				tmp_named="$(mktemp -t spec_template_named_XXXXXX.json)"
+				tmp_json="$(make_spec_temp spec_template_src)"
+				tmp_named="$(make_spec_temp spec_template_named)"
 				spec_to_json "$tfile" "$tmp_json" || { rm -f "$tmp_json" "$tmp_named"; die "Template conversion failed"; }
 				python3 - "$tmp_json" "$tmp_named" "$name" <<'PY' || { rm -f "$tmp_json" "$tmp_named"; die "Template name replacement failed"; }
 import json
@@ -471,7 +477,7 @@ PY
 					python3 "$HELPER" copy-spec "$tfile" "$out"
 				else
 					local tmp_template_json
-					tmp_template_json="$(mktemp -t spec_template_convert_XXXXXX.json)"
+					tmp_template_json="$(make_spec_temp spec_template_convert)"
 					spec_to_json "$tfile" "$tmp_template_json" || { rm -f "$tmp_template_json"; die "Template conversion failed"; }
 					if [[ "$target_fmt" == "json" ]]; then
 						cp -- "$tmp_template_json" "$out"
@@ -504,7 +510,7 @@ cmd_validate() (
         [[ -f "$f" ]] || die "File not found: $f"
         is_safe_path "$f" || exit 1
         $quiet || $json_out || echo "Validating: $f"
-        local tmp; tmp="$(mktemp -t spec_validate_XXXXXX.json)"
+        local tmp; tmp="$(make_spec_temp spec_validate)"
         trap 'rm -f -- "$tmp"' EXIT
         spec_to_json "$f" "$tmp"
         local result; result="$(run_kujo run "$PROJECT_DIR/src/validate.kujo" --json "$tmp" 2>/dev/null)" || true
@@ -520,7 +526,7 @@ cmd_render() (
 	[[ -f "$f" ]] || die "File not found: $f"
 	is_safe_path "$f" || exit 1
 	[[ -n "$out" ]] && enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(mktemp -t spec_render_XXXXXX.json)"
+	local tmp; tmp="$(make_spec_temp spec_render)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp"
 	local md
@@ -541,7 +547,7 @@ cmd_export() (
 	[[ "$fmt" =~ ^(agent|dispatch)$ ]] || die "Invalid format: $fmt (use agent or dispatch)"
 	is_safe_path "$f" || exit 1
 	[[ -n "$out" ]] && enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(mktemp -t spec_export_XXXXXX.json)"
+	local tmp; tmp="$(make_spec_temp spec_export)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp"
 	local ctx
@@ -569,7 +575,7 @@ cmd_list() (
 	# Batch convert all specs to JSON, then extract fields in one Python call
 	local orig_files=()
 	local json_files=()
-	local tmpdir; tmpdir="$(mktemp -d)"
+	local tmpdir; tmpdir="$(make_spec_temp spec_scan -d)"
 	trap 'rm -rf -- "$tmpdir"' EXIT
 	local idx=0
 	while IFS= read -r -d '' f; do
@@ -638,7 +644,7 @@ cmd_validate_all() (
 	[[ -d "$dir" ]] || die "Directory not found: $dir"
 	is_safe_path "$dir" || exit 1
 	local passed=0 failed=0
-	local tmpdir; tmpdir="$(mktemp -d -t spec_validate_all_XXXXXX)"
+	local tmpdir; tmpdir="$(make_spec_temp spec_validate_all -d)"
 	trap 'rm -rf -- "$tmpdir"' EXIT
 	local json_files=()
 	local idx=0
@@ -690,7 +696,7 @@ cmd_search() {
 	local found=0
 
 	while IFS= read -r -d '' f; do
-		local tmp; tmp="$(mktemp -t spec_search_XXXXXX.json)"
+		local tmp; tmp="$(make_spec_temp spec_search)"
 		spec_to_json "$f" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; continue; }
 		local name pri2 tags
 		{
@@ -730,7 +736,7 @@ cmd_status() (
 		IFS= read -r -d '' target < <(python3 "$HELPER" resolved-read-path "$f") || exit 1
 		work="$(mktemp -d "${target%/*}/.spec-status.XXXXXX")" || die "Cannot stage status update: $f"
 	else
-		work="$(mktemp -d -t spec_status_XXXXXX)"
+		work="$(make_spec_temp spec_status -d)"
 	fi
 	trap 'rm -rf -- "$work"' EXIT
 
@@ -779,7 +785,7 @@ cmd_convert() (
 
 	out="${out:-spec.$to}"
 	enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(mktemp -t spec_convert_XXXXXX.json)"
+	local tmp; tmp="$(make_spec_temp spec_convert)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
 
@@ -798,7 +804,7 @@ cmd_info() (
 	[[ -z "$f" ]] && die "Usage: spec info <file> [--json]"
 	[[ -f "$f" ]] || die "File not found: $f"
 	is_safe_path "$f" || exit 1
-	local tmp; tmp="$(mktemp -t spec_info_XXXXXX.json)"
+	local tmp; tmp="$(make_spec_temp spec_info)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp"
 
@@ -887,8 +893,8 @@ cmd_diff() {
 	[[ -f "$b" ]] || die "File not found: $b"
 	is_safe_path "$a" || exit 1
 	is_safe_path "$b" || exit 1
-	local ta; ta="$(mktemp -t spec_diff_a_XXXXXX.json)"
-	local tb; tb="$(mktemp -t spec_diff_b_XXXXXX.json)"
+	local ta; ta="$(make_spec_temp spec_diff_a)"
+	local tb; tb="$(make_spec_temp spec_diff_b)"
 	spec_to_json "$a" "$ta" || die "Cannot parse $a"
 	spec_to_json "$b" "$tb" || die "Cannot parse $b"
 	python3 -c "
@@ -916,7 +922,7 @@ cmd_export_eval() (
 	is_safe_path "$f" || exit 1
 	out="${out:-eval_suite.json}"
 	enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(mktemp -t spec_eval_XXXXXX.json)"
+	local tmp; tmp="$(make_spec_temp spec_eval)"
 	trap 'rm -f -- "$tmp"' EXIT
 	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
 	python3 -c "

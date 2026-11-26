@@ -7,7 +7,8 @@ source "$SCRIPT_DIR/test_helpers.sh"
 
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SPEC="$PROJECT_DIR/scripts/spec"
-TMPDIR="$(mktemp -d)"
+TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/spec_tests.XXXXXX")"
+export TMPDIR
 PASS=0
 FAIL=0
 
@@ -933,6 +934,7 @@ with tempfile.TemporaryDirectory() as tmp:
     tmpdir.mkdir()
     run("render", valid.name, settings={"TMPDIR": str(tmpdir)})
     assert not list(tmpdir.iterdir())
+    run("render", valid.name, code=1, settings={"TMPDIR": str(tmpdir / "missing")})
 
 PYTHON
 then
