@@ -719,15 +719,18 @@ cmd_convert() (
 
 	out="${out:-spec.$to}"
 	enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(make_spec_temp spec_convert)"
-	trap 'rm -f -- "$tmp"' EXIT
+	local tmp candidate=""
+	tmp="$(make_spec_temp spec_convert)"
+	trap 'rm -f -- "$tmp"; [[ -z "$candidate" ]] || rm -f -- "$candidate"' EXIT
 	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
 
-	if [[ "$to" == "json" ]]; then cp -- "$tmp" "$out"
-	elif [[ "$to" == "yaml" || "$to" == "yml" ]]; then
-		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp" --from json --to yaml > "$out" 2>/dev/null || die "YAML conversion failed"
+	if [[ "$to" == "json" ]]; then
+		cp -- "$tmp" "$out"
 	else
-		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp" --from json --to toml > "$out" 2>/dev/null || die "TOML conversion failed"
+		candidate="$(make_spec_temp spec_convert_output)"
+		run_kujo run "$PROJECT_DIR/src/convert.kujo" --input "$tmp" --from json --to "$to" > "$candidate" \
+			|| die "Conversion to $to failed"
+		cat -- "$candidate" > "$out"
 	fi
 	echo "Converted: $f → $out ($to)"
 )
@@ -856,9 +859,10 @@ cmd_export_eval() (
 	is_safe_path "$f" || exit 1
 	out="${out:-eval_suite.json}"
 	enforce_safe_write_path "$out" "$unsafe_write"
-	local tmp; tmp="$(make_spec_temp spec_eval)"
-	trap 'rm -f -- "$tmp"' EXIT
-	spec_to_json "$f" "$tmp" || die "Cannot parse $f"
+	local work
+	work="$(make_spec_temp spec_eval -d)"
+	trap 'rm -rf -- "$work"' EXIT
+	spec_to_json "$f" "$work/source.json" || die "Cannot parse $f"
 	spec_python -c "
 import json, sys
 spec = json.load(open(sys.argv[1]))
@@ -868,7 +872,8 @@ for er in spec.get('eval_requirements', []):
 	if 'params' in er: t['params'] = er['params']
 	suite['tests'].append(t)
 print(json.dumps(suite, indent=2))
-" "$tmp" > "$out" 2>/dev/null || die "Eval export failed"
+" "$work/source.json" > "$work/suite.json" 2>/dev/null || die "Eval export failed"
+	cat -- "$work/suite.json" > "$out"
 	echo "Exported eval suite: $out"
 )
 

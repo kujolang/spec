@@ -1151,5 +1151,19 @@ else
 	FAIL=$((FAIL+1))
 fi
 
+check "failed conversion and Eval export preserve existing output files" \
+	bash -c '
+		set -eu
+		cd "$2"
+		printf "%s\n" "existing output" > retained
+		printf "%s\n" "{\"eval_requirements\":null}" > eval-input.json
+		for format in yaml yml toml; do
+			! KUJO_BIN=/usr/bin/false "$1" convert eval-input.json --to "$format" --output retained || exit 1
+			test "$(cat retained)" = "existing output"
+		done
+		! "$1" export-eval eval-input.json --output retained || exit 1
+		test "$(cat retained)" = "existing output"
+	' _ "$SPEC" "$TMPDIR"
+
 # Summary
 report_results "Results"

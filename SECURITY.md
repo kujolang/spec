@@ -55,6 +55,8 @@ Mermaid and DOT graph labels are escaped before untrusted spec names are embedde
 
 `ci` and `validate-all` reject incomplete discovery when the scanner reports
 an error. Malformed dependency records count as failures for their own files.
+Conversion to YAML or TOML and Eval export finish generating output before
+opening the destination, so generation failures preserve existing files.
 
 ### 8. Conversion Cache Isolation
 
