@@ -284,24 +284,26 @@ spec_cmd_export_unified() (
 		eval) cmd_export_eval "$f" ${out:+--output "$out"} ${unsafe_opt:+$unsafe_opt} ;;
 		envelope)
 			[[ "$payload_format" =~ ^(agent|dispatch)$ ]] || die "Invalid --payload-format: $payload_format (use agent or dispatch)"
-			local tmp payload source_abs checksum generated_at schema_version envelope_json
-			tmp="$(make_spec_temp spec_export_env)"
-			trap 'rm -f -- "$tmp"' EXIT
-			spec_to_json "$f" "$tmp"
+			local work tmp source_checksum payload source_abs checksum generated_at schema_version envelope_json
+			work="$(make_spec_temp spec_export_env -d)"
+			trap 'rm -rf -- "$work"' EXIT
+			tmp="$work/converted.json"
+			source_checksum="$work/source.sha256"
+			spec_to_json "$f" "$tmp" true "$source_checksum"
 			payload="$(run_kujo run "$PROJECT_DIR/src/export.kujo" --json "$tmp" --format "$payload_format")" || die "Envelope export failed: Kujo runtime returned an error"
 			[[ -n "$payload" ]] || die "Envelope export failed: Kujo runtime produced no output"
 			source_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$f" 2>/dev/null || echo "$f")"
-			checksum="$(shasum -a 256 < "$f" 2>/dev/null | awk '{print $1}')"
+			checksum="$(cat "$source_checksum")"
 			generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
 			schema_version="${SPEC_SCHEMA_VERSION:-1.0.0}"
-			envelope_json="$(python3 -c '
+			envelope_json="$(printf '%s' "$payload" | python3 -c '
 import json, sys
 source_file = sys.argv[1]
 schema_version = sys.argv[2]
 checksum = sys.argv[3]
 generated_at = sys.argv[4]
 payload_format = sys.argv[5]
-raw_payload = sys.argv[6]
+raw_payload = sys.stdin.read()
 payload = raw_payload
 if payload_format == "dispatch":
     try:
@@ -319,7 +321,7 @@ out = {
     "payload": payload
 }
 print(json.dumps(out, indent=2))
-' "$source_abs" "$schema_version" "$checksum" "$generated_at" "$payload_format" "$payload")"
+' "$source_abs" "$schema_version" "$checksum" "$generated_at" "$payload_format")"
 			if [[ -n "$out" ]]; then
 				enforce_safe_write_path "$out" "$unsafe_write"
 				echo "$envelope_json" > "$out"

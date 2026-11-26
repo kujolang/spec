@@ -848,6 +848,7 @@ exit \$rc
 
 # Security boundaries apply consistently across CLI entry points.
 if python3 - "$SPEC" <<'PYTHON'
+import hashlib
 import json
 import os
 import pathlib
@@ -891,6 +892,9 @@ with tempfile.TemporaryDirectory() as tmp:
 
     valid = root / "valid.json"
     valid.write_text('{"name":"Valid","goal":"A goal"}')
+    for source in (valid, root / "team's spec.yaml", root / "team's spec.toml"):
+        envelope = json.loads(run("export", source.name, "--format", "envelope"))
+        assert envelope["metadata"]["checksum_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
     (root / "notes.md").symlink_to(outside / "notes.md")
     (root / "-").symlink_to(outside / "dash.md")
     for output in ("notes.md", "-"):

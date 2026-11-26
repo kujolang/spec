@@ -102,10 +102,17 @@ def read_bounded(path, byte_limit):
         return data
 
 
-def copy_spec(source, output):
+def write_source_checksum(data, output):
+    if output:
+        with open(output, "w", encoding="ascii") as handle:
+            handle.write(hashlib.sha256(data).hexdigest())
+
+
+def copy_spec(source, output, checksum_output=""):
     data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
     with open(output, "wb") as destination:
         destination.write(data)
+    write_source_checksum(data, checksum_output)
 
 
 def cache_directory():
@@ -126,10 +133,11 @@ def cache_entry(source, fmt):
     return os.path.join(cache_directory(), key + ".conversion")
 
 
-def prepare_conversion(source, snapshot, output, fmt, runtime, converter, use_cache):
+def prepare_conversion(source, snapshot, output, fmt, runtime, converter, use_cache, checksum_output):
     data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
     with open(snapshot, "wb") as handle:
         handle.write(data)
+    write_source_checksum(data, checksum_output)
     if use_cache == "false":
         print("-")
         return
