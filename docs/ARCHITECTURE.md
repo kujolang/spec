@@ -128,9 +128,9 @@ Unsupported assumptions:
 - No eval/exec of spec content
 - No API keys or secrets in spec files by design
 - File reads are restricted to the current project tree and reject path traversal plus symlink escapes.
-- Output writes can be restricted with `SPEC_SAFE_WRITE=on`; `--unsafe-write` is an explicit override.
+- Output writes restricted by `SPEC_SAFE_WRITE=on` check both the requested and resolved path even if the destination is missing. `--unsafe-write` is an explicit override.
 - User-home templates can be blocked with `SPEC_TEMPLATE_SOURCE_POLICY=project-only` or `--strict-template-source`.
-- YAML and TOML conversion caching uses canonical file paths and content-aware signatures. JSON inputs already use the interchange format and bypass the conversion cache.
+- YAML and TOML conversion cache entries bind the parser identity and the exact bounded input snapshot used for conversion. A single atomic cache record contains the signature and converted bytes. JSON inputs bypass the conversion cache.
 - Conversion caches are private per-user directories and are disabled when the cache path is a symlink or cannot be restricted to mode `0700`.
 - `validate-all` checks the requested directory boundary once, then validates converted JSON inputs in one Python process. This preserves deterministic ordering while avoiding one path-resolution and interpreter startup per file.
-- Sequential `spec ci` checks paths, enforces the size limit, and validates consecutive JSON specs in one helper invocation per batch of up to 256 files. YAML and TOML use the runtime conversion path. Explicit parallel scans aggregate per-file results in discovery order.
+- Sequential `spec ci` validates up to 256 consecutive JSON specs per helper invocation using bounded reads. YAML and TOML use native conversion. Explicit parallel scans aggregate per-file results in deterministic path order. Bounded scans retain at most the requested count plus one truncation marker, and GitHub annotations escape filenames.

@@ -45,14 +45,11 @@ spec_cmd_ci() {
 	[[ "$jobs" -ge 1 ]] || die "--jobs must be at least 1"
 
 	[[ -d "$dir" ]] || die "Directory not found: $dir"
-	local files; files="$(find "$dir" -maxdepth 5 -type f \( -name '*.spec.yml' -o -name '*.spec.yaml' -o -name '*.spec.toml' -o -name '*.spec.json' \) 2>/dev/null | sort)" || true
-	[[ -z "$files" ]] && die "No spec files found in $dir"
-
 	local total=0 passed=0 failed=0 truncated=false truncated_reason=""
 	local failures=()
 	local scan_files=()
 
-	while IFS= read -r f; do
+	while IFS= read -r -d '' f; do
 		[[ -z "$f" ]] && continue
 		if [[ "$max_files" -gt 0 ]] && [[ "${#scan_files[@]}" -ge "$max_files" ]]; then
 			truncated=true
@@ -60,10 +57,10 @@ spec_cmd_ci() {
 			break
 		fi
 		scan_files+=("$f")
-	done <<< "$files"
+	done < <(python3 "$HELPER" discover-ci "$dir" "$max_files")
 
 	if [[ "${#scan_files[@]}" -eq 0 ]]; then
-		die "No spec files selected for validation"
+		die "No spec files found in $dir"
 	fi
 
 	if [[ "$jobs" -eq 1 ]] || [[ "${#scan_files[@]}" -eq 1 ]]; then
@@ -170,29 +167,13 @@ spec_cmd_ci() {
 
 	case "$format" in
 		json)
-			python3 - "$total" "$passed" "$failed" "$truncated_json" "${failures[@]+"${failures[@]}"}" <<'PY'
-import json
-import sys
-
-total = int(sys.argv[1])
-passed = int(sys.argv[2])
-failed = int(sys.argv[3])
-truncated = sys.argv[4] == "true"
-failures = sys.argv[5:]
-print(json.dumps({
-	"total": total,
-	"passed": passed,
-	"failed": failed,
-	"failures": failures,
-	"truncated": truncated,
-}, indent=2))
-PY
+			printf '%s\0' "${failures[@]+"${failures[@]}"}" |
+				python3 "$HELPER" ci-failures json "$total" "$passed" "$failed" "$truncated_json"
 			;;
 		github)
 			if [[ "$failed" -gt 0 ]]; then
-				for ff in "${failures[@]}"; do
-					echo "::error file=$ff::Spec validation failed"
-				done
+				printf '%s\0' "${failures[@]}" |
+					python3 "$HELPER" ci-failures github "$total" "$passed" "$failed" "$truncated_json"
 			fi
 			echo "::notice::Spec CI: $passed/$total passed"
 			[[ "$jobs" -gt 1 ]] && echo "::notice::Spec CI used parallel validation (--jobs=$jobs)"

@@ -125,6 +125,20 @@ check_fail "render blocks outside output path when safe-write is on" bash -c "
 	SPEC_SAFE_WRITE=on '$SPEC' render '$PROJECT_DIR/fixtures/valid_minimal.json' --output '$TMPDIR/safe_write_block.md' >/dev/null 2>&1
 "
 
+check "safe-write validates resolved destinations before a file exists" bash -c '
+	sandbox="$(mktemp -d)"
+	cleanup() { rm -rf -- "$sandbox"; }
+	trap cleanup EXIT
+	mkdir "$sandbox/project" "$sandbox/other"
+	ln -s "$sandbox/other" "$sandbox/project/alias"
+	ln -s "$sandbox/other/absent.yml" "$sandbox/project/draft.yml"
+	cd "$sandbox/project" || exit 1
+	helper="$1/scripts/spec_helpers.py"
+	python3 "$helper" safe-write-path regular/draft.yml &&
+		! python3 "$helper" safe-write-path draft.yml &&
+		! python3 "$helper" safe-write-path alias/missing/draft.yml
+' _ "$PROJECT_DIR"
+
 # 13b. SEC-08: unsafe-write override bypasses safe-write boundary
 check "render allows outside output path with --unsafe-write" bash -c "
 	SPEC_SAFE_WRITE=on '$SPEC' render '$PROJECT_DIR/fixtures/valid_minimal.json' --output '$TMPDIR/safe_write_allow.md' --unsafe-write >/dev/null 2>&1
@@ -685,6 +699,25 @@ ${SPEC} validate '${PROJECT_DIR}/_test_dir' >/dev/null 2>&1; rc=\$?
 rmdir '${PROJECT_DIR}/_test_dir' 2>/dev/null
 exit \$rc
 "
+
+check "spec CI preserves unusual paths through discovery and annotations" bash -c '
+	sandbox="$(mktemp -d)"
+	cleanup() { rm -rf -- "$sandbox"; }
+	trap cleanup EXIT
+	cd "$sandbox" || exit 1
+	name="$(printf "one,part:part%%more\ntwo.spec.json")"
+	printf "{}\n" > "$name"
+	if ! report="$("$1" ci . --format json)"; then
+		printf "%s" "$report" | python3 -c "import json,sys; doc=json.load(sys.stdin); assert doc[\"failures\"] == [\"./\" + sys.argv[1]]" "$name" || exit 1
+	else
+		exit 1
+	fi
+	if ! report="$("$1" ci . --format github)"; then
+		[[ "$report" == *"one%2Cpart%3Apart%25more%0Atwo.spec.json"* ]]
+	else
+		exit 1
+	fi
+' _ "$SPEC"
 
 # 41. TEST-02: Edge case — symlink to valid spec works
 check "validate follows symlink to valid spec" bash -c "

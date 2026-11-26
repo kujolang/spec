@@ -10,9 +10,15 @@ Usage:
 All file paths are passed via sys.argv (never string-interpolated into code),
 eliminating command injection risk from spec file paths.
 """
+import hashlib
+import heapq
 import json
+import math
 import os
+import shutil
+import stat
 import sys
+import tempfile
 
 KNOWN_CHECK_TYPES = {
     "command_succeeds", "command_output_contains", "file_exists",
@@ -41,37 +47,193 @@ def fail(msg):
     sys.exit(1)
 
 
+def in_project(root, candidate):
+    try:
+        return os.path.commonpath((root, candidate)) == root
+    except ValueError:
+        return False
+
+
 def safe_read_path(path):
-    """Check the lexical path and the resolved target against the project root."""
+    """Check the lexical path and resolved target against the current project."""
     cwd = os.getcwd()
     if ".." in path:
         message = f"Error: Path traversal detected in: {path}"
+    elif not in_project(cwd, os.path.abspath(path)):
+        message = f"Error: Access to path outside project denied: {path}"
     else:
-        absolute = os.path.abspath(path)
-        if absolute != cwd and not absolute.startswith(cwd + "/"):
-            message = f"Error: Access to path outside project denied: {path}"
-        else:
-            resolved = os.path.realpath(path) if os.path.exists(path) else absolute
-            if resolved == cwd or resolved.startswith(cwd + "/"):
-                return True
-            print(f"Error: Symlink target outside project denied: {path}", file=sys.stderr)
-            print(f"Resolved target: {resolved}", file=sys.stderr)
-            return False
+        resolved = os.path.realpath(path)
+        if in_project(cwd, resolved):
+            return True
+        print(f"Error: Symlink target outside project denied: {path}", file=sys.stderr)
+        print(f"Resolved target: {resolved}", file=sys.stderr)
+        return False
     print(message, file=sys.stderr)
     print("Spec files must be within the current project directory.", file=sys.stderr)
     return False
 
 
+def safe_write_path(path):
+    cwd = os.getcwd()
+    # Resolve the original input even when its last components don't exist.
+    # Collapsing '..' before resolving symlinks changes filesystem semantics.
+    return (in_project(cwd, os.path.abspath(path))
+            and in_project(cwd, os.path.realpath(path)))
+
+
+MAX_SOURCE_BYTES = 1024 * 1024
+MAX_CONVERTED_BYTES = 8 * 1024 * 1024
+
+
+def read_bounded(path, byte_limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as source:
+        before = os.fstat(source.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("expected a regular spec file")
+        if before.st_size > byte_limit:
+            raise ValueError("File too large")
+        data = source.read(byte_limit + 1)
+        after = os.fstat(source.fileno())
+        if (len(data) != before.st_size or before.st_size != after.st_size
+                or before.st_mtime_ns != after.st_mtime_ns
+                or before.st_ctime_ns != after.st_ctime_ns):
+            raise ValueError("Spec changed while reading")
+        return data
+
+
+def copy_spec(source, output):
+    data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
+    with open(output, "wb") as destination:
+        destination.write(data)
+
+
+def cache_directory():
+    directory = os.path.join(os.environ.get("TMPDIR") or "/tmp",
+                             f"kujo-spec-cache-{os.getuid()}")
+    try:
+        os.mkdir(directory, 0o700)
+    except FileExistsError:
+        pass
+    info = os.stat(directory, follow_symlinks=False)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError("conversion cache is not private")
+    return directory
+
+
+def cache_entry(source, fmt):
+    key = hashlib.sha256(os.fsencode(os.path.realpath(source)) + b"\0" + fmt.encode()).hexdigest()
+    return os.path.join(cache_directory(), key + ".conversion")
+
+
+def prepare_conversion(source, snapshot, output, fmt, runtime, converter):
+    data = read_bounded(os.path.realpath(source), MAX_SOURCE_BYTES)
+    with open(snapshot, "wb") as handle:
+        handle.write(data)
+    try:
+        binary = shutil.which(runtime)
+        if not binary:
+            print("-")
+            return
+        tool_ids = []
+        for path in (binary, converter):
+            resolved = os.path.realpath(path)
+            info = os.stat(resolved)
+            tool_ids.append((resolved, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+        digest = hashlib.sha256(json.dumps(tool_ids).encode() + b"\0" + data).hexdigest()
+        entry = cache_entry(source, fmt)
+        try:
+            record = read_bounded(entry, MAX_CONVERTED_BYTES + 65)
+            signature, separator, payload = record.partition(b"\n")
+            if separator and signature == digest.encode() and len(payload) <= MAX_CONVERTED_BYTES:
+                load_json(payload)
+                with open(output, "wb") as handle:
+                    handle.write(payload)
+                print("hit")
+                return
+        except (OSError, ValueError, RecursionError):
+            pass
+        print(digest)
+    except (OSError, ValueError):
+        print("-")
+
+
+def cache_conversion(source, output, fmt, signature):
+    temporary = None
+    try:
+        entry = cache_entry(source, fmt)
+        data = read_bounded(output, MAX_CONVERTED_BYTES)
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(entry), delete=False) as handle:
+            temporary = handle.name
+            handle.write(signature.encode() + b"\n" + data)
+        os.replace(temporary, entry)
+        temporary = None
+    except (OSError, ValueError):
+        pass
+    finally:
+        if temporary is not None:
+            os.unlink(temporary)
+
+
 def validate_ci_json(filepath, strict):
-    if not os.path.isfile(filepath) or not safe_read_path(filepath):
+    if not safe_read_path(filepath):
         return 1
     try:
-        if os.path.getsize(filepath) > 1048576:
-            return 1
-        return validate_quiet(filepath, strict)
+        data = read_bounded(os.path.realpath(filepath), MAX_SOURCE_BYTES)
+        return validate_spec(load_json(data), strict)
     except (OSError, ValueError, TypeError, RecursionError):
         # CI reports the failing file and leaves detailed diagnostics to validate.
         return 1
+
+
+def discover_ci(directory, maximum):
+    if not safe_read_path(directory):
+        return 1
+
+    def visit(folder, depth):
+        if depth == 5:
+            return
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        yield from visit(entry.path, depth + 1)
+                    elif (entry.is_file(follow_symlinks=False)
+                          and entry.name.endswith((".spec.yml", ".spec.yaml", ".spec.toml", ".spec.json"))):
+                        yield os.fsencode(entry.path)
+        except FileNotFoundError:
+            return
+
+    paths = visit(directory.rstrip(os.sep) or os.sep, 0)
+    selected = heapq.nsmallest(maximum + 1, paths) if maximum else sorted(paths)
+    for path in selected:
+        sys.stdout.buffer.write(path + b"\0")
+    return 0
+
+
+def ci_failures(output_format, total, passed, failed, truncated):
+    failures = [os.fsdecode(value) for value in sys.stdin.buffer.read().split(b"\0") if value]
+    if output_format == "json":
+        print(json.dumps({"total": total, "passed": passed, "failed": failed,
+                          "failures": failures, "truncated": truncated}, indent=2))
+        return
+    escapes = (("%", "%25"), ("\r", "%0D"), ("\n", "%0A"), (":", "%3A"), (",", "%2C"))
+    for path in failures:
+        for character, escaped in escapes:
+            path = path.replace(character, escaped)
+        print(f"::error file={path}::Spec validation failed")
+
+
+def load_json(data):
+    def invalid_constant(value):
+        raise ValueError(f"Invalid JSON constant: {value}")
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("JSON number exceeds the supported range")
+        return number
+
+    return json.loads(data, parse_constant=invalid_constant, parse_float=finite_float)
 
 
 def validate_ci_batch(strict, fail_fast):
@@ -100,8 +262,7 @@ def fields_text(spec, fields):
 
 def read_metadata(filepath):
     try:
-        with open(filepath) as fh:
-            spec = json.load(fh)
+        spec = load_json(read_bounded(filepath, MAX_CONVERTED_BYTES))
         if isinstance(spec, dict):
             return spec
     except (OSError, ValueError, RecursionError):
@@ -276,11 +437,12 @@ def list_specs(filepaths, json_out=False):
 def validate_quiet(filepath, strict=False):
     """Fast batch validator matching the runtime validator's pass/fail rules."""
     try:
-        with open(filepath) as fh:
-            spec = json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
+        return validate_spec(load_json(read_bounded(filepath, MAX_CONVERTED_BYTES)), strict)
+    except (OSError, ValueError, RecursionError):
         return 1
 
+
+def validate_spec(spec, strict):
     if not isinstance(spec, dict):
         return 1
 
@@ -517,6 +679,30 @@ def main():
 
     elif cmd == "safe-path":
         sys.exit(0 if safe_read_path(sys.argv[2]) else 1)
+
+    elif cmd == "copy-spec":
+        try:
+            copy_spec(*sys.argv[2:])
+        except (OSError, ValueError) as error:
+            fail(f"Error: {error}: {sys.argv[2]}")
+
+    elif cmd == "prepare-conversion":
+        try:
+            prepare_conversion(*sys.argv[2:])
+        except (OSError, ValueError) as error:
+            fail(f"Error: {error}: {sys.argv[2]}")
+
+    elif cmd == "cache-conversion":
+        cache_conversion(*sys.argv[2:])
+
+    elif cmd == "safe-write-path":
+        sys.exit(0 if safe_write_path(sys.argv[2]) else 1)
+
+    elif cmd == "discover-ci":
+        sys.exit(discover_ci(sys.argv[2], int(sys.argv[3])))
+
+    elif cmd == "ci-failures":
+        ci_failures(sys.argv[2], *(int(v) for v in sys.argv[3:6]), sys.argv[6] == "true")
 
     elif cmd == "validate-ci-json":
         sys.exit(validate_ci_json(sys.argv[2], sys.argv[3] == "true"))
