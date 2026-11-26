@@ -19,7 +19,16 @@ echo ""
 
 # Gate 1: Test suite passes
 echo "[GATE 1] Test suite"
-if bash "$PROJECT_DIR/tests/run_tests.sh" >/dev/null 2>&1; then echo "  PASS: Test suite"; PASS=$((PASS+1)); else echo "  FAIL: Test suite"; FAIL=$((FAIL+1)); fi
+suite_log="$(mktemp "${TMPDIR:-/tmp}/spec-release-tests.XXXXXX")"
+trap 'rm -f -- "$suite_log"' EXIT
+if bash "$PROJECT_DIR/tests/run_tests.sh" > "$suite_log" 2>&1; then
+	echo "  PASS: Test suite"
+	PASS=$((PASS+1))
+else
+	echo "  FAIL: Test suite"
+	cat -- "$suite_log"
+	FAIL=$((FAIL+1))
+fi
 echo ""
 
 # Gate 2: All source files exist
